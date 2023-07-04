@@ -150,45 +150,14 @@ private:
     size_t  m_VarCountAddress;
 
 public:
-    InfoStreamBuilderBase() {
-        m_BufferSize = 0;
-        m_MaxOutSize = 0;
-        ResizeBuffer(32);
-    }
+    InfoStreamBuilderBase();
 
-    ~InfoStreamBuilderBase() {
-        if (m_Buffer) {
-            free(m_Buffer);
-        }
-    }
+    ~InfoStreamBuilderBase();
 
 protected:
-    void ResizeBuffer(size_t newSize) {
-        DEBUG_PRINTF_P("Resizing stream buffer from %d to %d\n", m_BufferSize, newSize)
-        if (!m_BufferSize) {
-            m_Buffer = (char*)malloc(newSize);
-        }
-        else {
-            m_Buffer = (char*)realloc(m_Buffer, newSize);
-        }
-        m_BufferSize = newSize;
-    }
+    void ResizeBuffer(size_t newSize);
 
-    size_t WriteData(size_t address, const void* data, size_t size) {
-        if (!size) {
-            return address;
-        }
-        DEBUG_PRINTF_P("Writing %d bytes at %d\n", size, address);
-        size_t endaddr = address + size;
-        if (endaddr > m_BufferSize) {
-            ResizeBuffer(endaddr + 16);  
-        }
-        memcpy(m_Buffer + address, data, size);
-        if (endaddr > m_MaxOutSize) {
-            m_MaxOutSize = endaddr;
-        }
-        return endaddr;
-    }
+    size_t WriteData(size_t address, const void* data, size_t size);
 
     template<typename D>
     size_t WriteData(size_t address, D* data) {
@@ -200,91 +169,35 @@ protected:
         return WriteData(address, &data, sizeof(D));
     }
 
-    size_t WriteString(size_t address, const char* str) {
-        uint8_t len = strlen(str);
-        DEBUG_PRINTF_P("Writing string %s at address %d\n", str, address);
-        address = WriteData(address, len);
-        address = WriteData(address, str, len);
-        return address;
-    }
+    size_t WriteString(size_t address, const char* str);
 
-    size_t OpenHeader(BombConfig::ComponentType type) {
-        size_t addr = 0;
-        addr = WriteData(addr, type);
-        return addr;
-    }
-
-    void FinalizeHeader(size_t addr) {
-        m_VarCountAddress = addr;
-        uint8_t zero = 0;
-        addr = WriteData(addr, zero);
-        m_VarsPointer = addr;
-    }
+    size_t OpenHeader(BombConfig::ComponentType type);
+    void FinalizeHeader(size_t addr);
 
 public:
-    void Build(void** data, size_t* dataSize) {
-        void* d = realloc(m_Buffer, m_MaxOutSize);
-        m_Buffer = nullptr;
-        *data = d;
-        *dataSize = m_MaxOutSize;
-    }
+    void Build(void** data, size_t* dataSize);
 
-    void AddVariable(const VariableParam* param) {
-        *(m_Buffer + m_VarCountAddress) += 1;
-        m_VarsPointer = WriteString(m_VarsPointer, param->Name);
-        m_VarsPointer = WriteData(m_VarsPointer, param->Type);
-    }
+    void AddVariable(const VariableParam* param);
 };
 
 class BatteryInfoStreamBuilder : public InfoStreamBuilderBase {
 public:
-    void SetBatteryInfo(uint8_t batteryCount, uint8_t batterySize) {
-        size_t addr = OpenHeader(BombConfig::ComponentType::BATTERY);
-        addr = WriteData(addr, batteryCount);
-        addr = WriteData(addr, batterySize);
-        FinalizeHeader(addr);
-    }
+    void SetBatteryInfo(uint8_t batteryCount, uint8_t batterySize);
 };
 
 class LabelInfoStreamBuilder : public InfoStreamBuilderBase {
 public:
-    void SetLabelInfo(const char** possibleTexts) {
-        size_t addr = OpenHeader(BombConfig::ComponentType::LABEL);
-        const char** texts = possibleTexts;
-        while (*texts != nullptr) {
-            texts++;
-        }
-        uint8_t textCount = texts - possibleTexts;
-        addr = WriteData(addr, textCount);
-        texts = possibleTexts;
-        while (*texts != nullptr) {
-            addr = WriteString(addr, *texts);
-            texts++;
-        }
-        FinalizeHeader(addr);
-    }
+    void SetLabelInfo(const char** possibleTexts);
 };
 
 class PortInfoStreamBuilder : public InfoStreamBuilderBase {
 public:
-    void SetPortInfo(const char* portName) {
-        size_t addr = OpenHeader(BombConfig::ComponentType::PORT);
-        addr = WriteString(addr, portName);
-        FinalizeHeader(addr);
-    }
+    void SetPortInfo(const char* portName);
 };
 
 class ModuleInfoStreamBuilder : public InfoStreamBuilderBase {
 public:
-    ModuleInfoStreamBuilder* SetInfo(const char* moduleName, BombConfig::ModuleFlag flags, void* extraData, uint16_t extraDataSize) {
-        size_t addr = OpenHeader(BombConfig::ComponentType::MODULE);
-        addr = WriteString(addr, moduleName);
-        addr = WriteData(addr, flags);
-        addr = WriteData(addr, extraDataSize);
-        addr = WriteData(addr, extraData, extraDataSize);
-        FinalizeHeader(addr);
-        return this;
-    }
+    ModuleInfoStreamBuilder* SetInfo(const char* moduleName, BombConfig::ModuleFlag flags, void* extraData, uint16_t extraDataSize);
 
     template<typename E>
     ModuleInfoStreamBuilder* SetInfo(const char* moduleName, BombConfig::ModuleFlag flags, E* extraData = nullptr) {

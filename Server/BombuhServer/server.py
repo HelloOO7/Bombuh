@@ -112,10 +112,10 @@ class DeviceHandle:
         return self.__socket__.device
 
 class RequestHandler:
-    def decode(self, device: DeviceHandle, io: DataInput):
+    def decode(self, device: DeviceHandle, io: DataInput) -> object:
         return None
     
-    def execute(self, request):
+    def execute(self, request) -> None:
         pass
 
     def respond(self, request):

@@ -22,6 +22,8 @@ namespace bconf {
         STRIKE,
         EXPLOSION,
         DEFUSAL,
+        LIGHTS_OUT,
+        LIGHTS_ON
     };
 
     DEFINE_ENUM_FLAG_OPERATORS(SyncFlag)
@@ -92,6 +94,7 @@ public:
     void AckReady();
     void AckReadyIfModuleConfigured(BombComponent* mod);
 
+    void Strike();
     void DefuseMe();
 
     void UpdateClockValue(bombclock_t clock);

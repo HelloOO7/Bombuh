@@ -163,6 +163,8 @@ class BombEvent:
     STRIKE = 3
     EXPLOSION = 4
     DEFUSAL = 5
+    LIGHTS_OUT = 6
+    LIGHTS_ON = 7
 
 class BombState:
     IDLE = 'IDLE'
@@ -208,7 +210,10 @@ class Bomb:
     strikes: int
     strikes_max: int
 
+    cause_of_explosion: str
+
     devices_remaining_to_ready: set
+    force_status_report: bool
 
     def __init__(self, srv: Server) -> None:
         self.srv = srv
@@ -220,15 +225,18 @@ class Bomb:
         self.batteries = []
         self.all_components = []
         self.timer_last_updated = None
+        self.cause_of_explosion = None
         self.devices_remaining_to_ready = set()
         self.bomb_cfg_data = None
         self.dev_to_component_dict = dict()
         self.strikes = 0
         self.strikes_max = 0
-        self.timer_ms = 0
+        self.timer_limit = 0.0
+        self.timer_ms = 0.0
         self.timer_scale = 1.0
         self.serial_number = '000000'
         self.random_seed = 0
+        self.force_status_report = False
         self.register_handlers()
 
     def register_handlers(self):
@@ -244,10 +252,11 @@ class Bomb:
             def respond(self, request):
                 return list(bitcvtr.from_u32(bomb.timer_int()))
             
-        class AckReadyToArmHandler(RequestHandler):
+        class DeviceSpecificHandlerBase(RequestHandler):
             def decode(self, device: DeviceHandle, io: DataInput):
                 return {'deviceid': device.unique_id()}
             
+        class AckReadyToArmHandler(DeviceSpecificHandlerBase):
             def execute(self, request):
                 bomb.device_ready(request['deviceid'])
 
@@ -255,18 +264,23 @@ class Bomb:
             def respond(self, request):
                 return bomb.bomb_cfg_data
         
-        class GetComponentConfigHandler(RequestHandler):
-            def decode(self, device: DeviceHandle, io: DataInput):
-                return {'deviceid': device.unique_id()}
-            
+        class GetComponentConfigHandler(DeviceSpecificHandlerBase):
             def respond(self, request):
                 return bomb.dev_to_component_dict[request['deviceid']].config_cache
+            
+        class AddStrikeHandler(DeviceSpecificHandlerBase):
+            def execute(self, request) -> None:
+                device = bomb.dev_to_component_dict.get(request['deviceid'])
+                if device and type(device) is ModuleHandle:
+                    mod:ModuleHandle = device
+                    bomb.add_strike(mod.name)
 
         srv.regist_handler("GetStrikes", GetStrikesHandler())
         srv.regist_handler("GetClock", GetClockHandler())
         srv.regist_handler("AckReadyToArm", AckReadyToArmHandler())
         srv.regist_handler("GetBombConfig", GetBombConfigHandler())
         srv.regist_handler("GetComponentConfigByBusAddress", GetComponentConfigHandler())
+        srv.regist_handler("AddStrike", AddStrikeHandler())
 
     @staticmethod
     def pack_buffer(buf: bytes):
@@ -435,22 +449,53 @@ class Bomb:
     def update_timescale(self) -> None:
         self.timer_scale = Bomb.STRIKE_TO_TIMER_SCALE[min(self.strikes, len(Bomb.STRIKE_TO_TIMER_SCALE) - 1)]
 
-    def strike(self) -> None:
+    def is_force_status_report(self) -> bool:
+        retval = self.force_status_report
+        self.force_status_report = False
+        return retval
+
+    def add_strike(self, cause: str = '') -> None:
         self.strikes += 1
         if (self.strikes == self.strikes_max):
-            self.state = BombState.SUMMARY
-            self.dispatchEvent(BombEvent.EXPLOSION)
+            self.explode(cause)
         else:
             self.update_timescale()
             self.dispatchEvent(BombEvent.STRIKE)
+            self.force_status_report = True
+
+    def explode(self, cause: str) -> None:
+        print("Bomb EXPLODED, reason:", cause)
+        self.state = BombState.SUMMARY
+        self.cause_of_explosion = cause
+        self.dispatchEvent(BombEvent.EXPLOSION)
+        self.force_status_report = True
+
+    def has_exploded(self) -> bool:
+        return self.cause_of_explosion != None
 
     def update_timer(self) -> None:
+        ts = time.ticks_ms()
         if (self.timer_last_updated is None):
-            self.timer_last_updated = time.time()
+            self.timer_last_updated = ts
         else:
-            self.timer_ms -= ((time.time() - self.timer_last_updated) * self.timer_scale) * 1000
-            if (self.timer_ms < 0):
+            self.timer_ms -= time.ticks_diff(ts, self.timer_last_updated) * self.timer_scale
+            self.timer_last_updated = ts
+            if (self.timer_ms <= 0):
                 self.timer_ms = 0
+                self.explode('Time ran out')
+
+    def is_sync_online(self):
+        return self.is_game_running() or self.configuration_in_progress()
+
+    def is_game_running(self):
+        return self.state == BombState.INGAME
+
+    def update(self):
+        if self.is_game_running():
+            self.update_timer()
+        
+        if (self.is_sync_online()):
+            self.srv.sync()
 
     def dispatchEvent(self, eventId: int, params = None):
         self.srv.send_event(eventId, params)
@@ -460,5 +505,5 @@ class Bomb:
         self.dispatchEvent(BombEvent.RESET)
 
     def exit(self) -> None:
-        self.dispatchEvent(BombEvent.RESET)
+        self.reset()
         self.req_exit = True

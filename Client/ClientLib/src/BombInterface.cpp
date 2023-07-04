@@ -15,6 +15,9 @@ BombInterface::BombInterface(BombClient* client, bconf::SyncFlag syncFlags)
 
 void BombInterface::OnEvent(uint8_t eventId, void* eventData) {
     switch (eventId) {
+        case bconf::RESET:
+            m_Client->DiscardRequests();
+            break;
         case bconf::STRIKE:
             if (m_SyncFlags & bconf::SYNC_STRIKES) {
                 SyncStrikes();
@@ -75,8 +78,7 @@ void BombInterface::LoadComponentConfig(BombComponent* component) {
 }
 
 void BombInterface::AckReady() {
-    bprotocol::SimpleRequest<void> req;
-    m_Client->QueueRequest("AckReadyToArm", &req);
+    m_Client->QueueRequest("AckReadyToArm");
 }
 
 void BombInterface::AckReadyIfModuleConfigured(BombComponent* mod) {
@@ -85,8 +87,12 @@ void BombInterface::AckReadyIfModuleConfigured(BombComponent* mod) {
     }
 }
 
+void BombInterface::Strike() {
+    m_Client->QueueRequest("AddStrike");
+}
+
 void BombInterface::DefuseMe() {
-    
+    m_Client->QueueRequest("DefuseComponent");
 }
 
 void BombInterface::UpdateClockValue(bombclock_t clock) {

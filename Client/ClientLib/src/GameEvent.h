@@ -95,6 +95,27 @@ namespace game {
     }
 
     template<typename C>
+    struct EventChainHandle {
+        friend class EventManager<C>;
+        friend class EventChain<C>;
+    private:
+        EventChain<C>* m_Chain;
+        bool           m_Active;
+
+        EventChainHandle(EventChain<C>* chain) {
+            m_Chain = chain;
+            m_Active = true;
+        }
+
+    public:
+        void Cancel() {
+            if (m_Active) {
+                m_Chain->Cancel();
+            }
+        }
+    };
+
+    template<typename C>
     class EventManager {
     private:
         EventChain<C>* m_Events;
@@ -105,15 +126,19 @@ namespace game {
             
         }
 
-        void Start(Event<C>* event) {
+        void Start(Event<C>* event, EventChainHandle<C>* handle = nullptr) {
             if (event) {
-                EventChain<C>* chain = new EventChain<C> {event, m_Events, nullptr};
+                EventChain<C>* chain = new EventChain<C> {event, m_Events, nullptr, handle};
                 while (event) {
                     event->m_Chain = m_Events;
                     event = event->m_Next;
                 }
                 m_Events->m_Next = chain;
                 m_Events = chain;
+                if (handle) {
+                    *handle = EventChainHandle<C>(chain);
+                    chain->m_Handle = handle;
+                }
             }
         }
 
@@ -175,6 +200,11 @@ namespace game {
         Event<C>* m_CurEvent;
         EventChain* m_Prev;
         EventChain* m_Next;
+        EventChainHandle<C>* m_Handle;
+
+        ~EventChain() {
+            m_Handle->m_Active = false;
+        }
 
         void Cancel() {
             Event<C>* e = m_CurEvent;

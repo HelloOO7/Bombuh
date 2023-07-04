@@ -89,6 +89,12 @@
             if (state) {
                 hide(':not(.visible-if-' + newState + ') .visible-if-' + state);
             }
+            if (state != 'INGAME') {
+                closeGameMonitor();
+            }
+            if (state == 'SUMMARY') {
+                fillSummaryScreen();
+            }
             unhide('.visible-if-' + newState);
             state = newState;
             syncLabelWidths();
@@ -246,12 +252,65 @@
         let timemin = document.getElementById('timer-minor');
 
         let timer = 5 * 60 * 1000;
+        let rendered_timer = 0;
         let timerInterval = null;
         let syncInterval = null;
         let timescale = 1.0;
+        let websocket = null;
+        let strikes = 0;
+
+        function closeGameMonitor() {
+            if (timerInterval !== null) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            if (websocket) {
+                websocket.close();
+                websocket = null;
+            }
+        }
+
+        function fillSummaryScreen() {
+            let content = document.getElementById('summary-content');
+            hide(content);
+            ajaxGet('/api/summary').then(function(resp) {
+                if (resp.ok) {
+                    resp.json().then(function(json) {
+                        if (json.exploded) {
+                            hide('#summary-defused');
+                            unhide('#summary-exploded');
+
+                            document.getElementById('cause-of-explosion').textContent = json.cause_of_explosion;
+                        }
+                        else {
+                            unhide('#summary-defused');
+                            hide('#summary-exploded');
+                        }
+                        document.getElementById('time-remaining').textContent = json.time_remaining;
+                        unhide(content);
+                    });
+                }
+            });
+        }
 
         function startGameMonitor() {
-            //TODO sync timer and strikes over websockets
+            closeGameMonitor()
+            websocket = new WebSocket('ws://' + window.location.host + '/game-monitor');
+            
+            websocket.onclose = function(ev) {
+                websocket = null;
+            };
+
+            websocket.onmessage = function(ev) {
+                let data = JSON.parse(ev.data);
+                if (data.exploded) {
+                    changeState('SUMMARY');
+                }
+                else {
+                    strikes = data.strikes;
+                    setTimer(data.timer);
+                }
+            };
 
             lastTimerIntervalTs = 0;
             timerInterval = setInterval(() => {
@@ -271,20 +330,42 @@
             }, 50);
         }
 
+        function resetTimer() {
+            rendered_timer = 0;
+        }
+
+        let strikesEl = document.getElementById('strikes-xs');
+
+        function setStrikes(nr) {
+            strikesEl.textContent = 'X'.repeat(nr);
+        }
+
+        function resetTimerAndStrikes() {
+            resetTimer();
+            setStrikes(0);
+        }
+
         function setTimer(millis) {
             function zeroPad(num) {
                 return num.toString().padStart(2, '0');
             }
 
-            timer = millis;
-            if (millis > 60 * 1000) {
-                let seconds = Math.floor(millis / 1000)
-                timemaj.textContent = zeroPad(Math.floor(seconds / 60));
-                timemin.textContent = zeroPad(seconds % 60);
+            if (millis < 0) {
+                millis = 0;
             }
-            else {
-                timemaj.textContent = zeroPad(Math.floor(millis / 1000));
-                timemin.textContent = zeroPad(Math.floor(millis / 10) % 100);
+
+            timer = millis;
+            if (!rendered_timer || timer < rendered_timer) {
+                rendered_timer = timer
+                if (millis > 60 * 1000) {
+                    let seconds = Math.floor(millis / 1000)
+                    timemaj.textContent = zeroPad(Math.floor(seconds / 60));
+                    timemin.textContent = zeroPad(seconds % 60);
+                }
+                else {
+                    timemaj.textContent = zeroPad(Math.floor(millis / 1000));
+                    timemin.textContent = zeroPad(Math.floor(millis / 10) % 100);
+                }
             }
         }
 
@@ -313,6 +394,7 @@
             data['bomb.timer'] = timeMillis;
             ajaxPost('/api/configure', data).then(function(resp) {
                 if (resp.ok) {
+                    resetTimerAndStrikes();
                     setTimer(timeMillis);
                     function configCheck() {
                         ajaxGet('/api/configured-check').then(function(resp) {
@@ -356,6 +438,7 @@
                 if (resp.ok) {
                     ajaxGet('/api/game-state').then(function(gs) {
                         gs.json().then(function(json) {
+                            resetTimerAndStrikes();
                             setTimer(json.timer);
                             changeState('INGAME');
                             startGameMonitor();

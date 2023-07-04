@@ -177,6 +177,10 @@ private:
                 InsertRequest(allocIndex, handlerName, static_cast<void*>(params), sizeof(Req), nullptr, nullptr);
             }
         }
+
+        void QueueRequest(const char* handlerName);
+        
+        void DiscardRequests();
     
     private:
         void InsertRequest(size_t id, const char* handlerName, void* params, size_t paramSize, void(*responseHandler)(void*, void*), void* handleRespParam);

@@ -12,8 +12,6 @@ private:
 
 	int m_LedState;
 
-	game::Event<TestModule>* m_BlinkEvent {nullptr};
-
 public:
 	TestModule() : m_Var2{nullptr} {
 

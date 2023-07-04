@@ -37,12 +37,19 @@ def main():
 
     web.start_thread(bomb)
 
+    last_web_sync = None
+    WEB_SYNC_INTERVAL = 1000
+
     while True:
         if (bomb.req_exit):
             break
+        bomb.update()
+        ts = time.ticks_ms()
+        if last_web_sync is None or time.ticks_diff(ts, last_web_sync) > WEB_SYNC_INTERVAL or bomb.is_force_status_report():
+            web.report_game_status()
+            last_web_sync = ts
+        
         time.sleep(0.05)
-        if (bomb.state == BombState.INGAME) or bomb.configuration_in_progress():
-            srv.sync()
 
 def atexit():
     web.shutdown()

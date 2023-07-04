@@ -212,6 +212,17 @@ size_t BombClient::GetAvailableRequestId() {
     return allocIndex;
 }
 
+void BombClient::QueueRequest(const char* handlerName)  {
+    size_t allocIndex = GetAvailableRequestId();
+    if (allocIndex != REQUEST_POOL_FULL) {
+        InsertRequest(allocIndex, handlerName, nullptr, 0, nullptr, nullptr);
+    }
+}
+
+void BombClient::DiscardRequests() {
+    m_RequestQueueAlloc = 0;
+}
+
 void BombClient::InsertRequest(size_t id, const char* handlerName, void* params, size_t paramSize, void(*responseHandler)(void*, void*), void* handleRespParam) {
     ServerRequest* req = &m_RequestPool[id];
     req->HandlerID = HashID(handlerName);

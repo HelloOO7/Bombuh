@@ -62,7 +62,24 @@
 						<h1><span id="timer-major"></span>:<span id="timer-minor"></span></h1>
 					</div>
 					<div>
+						<h3>Strikes: <span id="strikes-xs">XXX</span></h3>
+					</div>
+					<div>
 						<button type="button" class="action-stop-game">Ukončit hru</button>
+					</div>
+				</div>
+				<div class="hidden visible-if-SUMMARY" id="summary-container">
+					<div class="hidden" id="summary-content"><!-- hidden until data is loaded -->
+						<div id="summary-exploded" class="hidden">
+							<h1>EXPLODED</h1>
+							<h4>Cause of Explosion: <span id="cause-of-explosion"></span></h2>
+						</div>
+						<div id="summary-defused" class="hidden">
+							<h1>DEFUSED</h1>
+						</div>
+						<div>
+							<h4>Time remaining: <span id="time-remaining"></span></h4>
+						</div>
 					</div>
 				</div>
 			</div>
