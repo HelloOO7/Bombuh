@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html dir="ltr" lang="cs">
+	<head>
+		<meta charset="UTF-8" />
+		<title>Konfigurace bomby</title>
+		<script type="text/javascript" src="/bombuh.js"></script>
+	</head>
+
+	<body>
+		<style type="text/css">
+			.hidden {
+				display: none;
+			}
+
+			.margin {
+				margin: 5px;
+			}
+
+			input {
+				margin-left: 5px;
+			}
+
+			fieldset {
+				display: inline-block;
+			}
+
+			.incorrect {
+				border-style: solid;
+				border-color: red;
+			}
+		</style>
+		<h1>Ovládací panel bomby</h1>
+		<div id="loading">
+			<h2>Načítání...</h2>
+		</div>
+		<div id="loaded" class="hidden">
+			<button type="button" class="action-discover-modules hidden visible-if-IDLE">Spárovat periferie</button>
+			<button type="button" class="action-exit-app hidden visible-if-IDLE visible-if-INGAME visible-if-SUMMARY">Vypnout server</button>
+			<div id="container">
+				<form id="configuration-form" class="hidden visible-if-IDLE margin" autocomplete="off">
+					<fieldset>
+						<legend>Předvolby</legend>
+						<div>
+							<label for="conf-bomb-time">Časový limit bomby</label>
+							<input id="conf-bomb-time" name="bomb.timer" type="text" pattern="[0-9][0-9]?:[0-9][0-9]" value="05:00">
+						</div>
+						<div>
+							<label for="conf-bomb-strikes">Kolikrát a dost?</label>
+							<input id="conf-bomb-strikes" name="bomb.strikes" type="number" value="3">
+						</div>
+					</fieldset>
+
+					<div id="configuration-extra-container">
+
+					</div>
+
+					<button type="button" class="action-configure-bomb hidden">Použít konfiguraci</button>	
+					<button type="button" class="action-start-game hidden">Start hry</button>
+				</form>
+				<div class="hidden visible-if-INGAME" id="countdown">
+					<div>
+						<h1><span id="timer-major"></span>:<span id="timer-minor"></span></h1>
+					</div>
+					<div>
+						<button type="button" class="action-stop-game">Ukončit hru</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	</body>
+</html>

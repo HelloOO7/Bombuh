@@ -1,0 +1,16 @@
+{
+    "name": "BombuhClient",
+    "version": "1.0.0",
+    "description": "BombuhModule client library. Provides basic game logic as well as I2C communication interface for BombuhServer.",
+    "keywords": "bomb, i2c, game",
+    "authors":
+    [
+      {
+        "name": "Čeněk Řehoř",
+        "email": "cendarehor@gmail.com"
+      }
+    ],
+    "license": "MIT",
+    "frameworks": "*",
+    "platforms": "*"
+  }
