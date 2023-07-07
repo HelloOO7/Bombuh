@@ -5,6 +5,7 @@ import time
 import random
 
 from server import DeviceHandle
+from dfplayer import Player
 
 class VariableType:
     NULL = 0
@@ -12,6 +13,7 @@ class VariableType:
     INT = 2
     LONG = 3
     BOOL = 4
+    STR_ENUM = 5
 
 class ComponentVariable:
     name: str
@@ -42,6 +44,7 @@ class BombConfig:
 
 class ComponentHandleBase:
     comm_device: DeviceHandle
+    accept_event_bits: int
     variables: list[ComponentVariable]
 
     config_cache: bytes
@@ -49,6 +52,9 @@ class ComponentHandleBase:
     def __init__(self, dev: DeviceHandle) -> None:
         self.comm_device = dev
         self.config_cache = None
+
+    def accepts_event(self, eventId: int) -> bool:
+        return (self.accept_event_bits & (1 << eventId)) != 0
 
     def read_vars(self, io: DataInput) -> None:
         self.variables = []
@@ -61,6 +67,11 @@ class ComponentHandleBase:
     
     def build_config(self) -> bytes:
         return bytes()
+
+class ModuleFlag:
+    NEEDY = (1 << 0)
+    DECORATIVE = (1 << 1)
+    DEFUSABLE = (1 << 2)
 
 class ModuleHandle(ComponentHandleBase):
     name: str
@@ -87,8 +98,9 @@ class ModuleHandle(ComponentHandleBase):
         for var in self.variables:
             out.write_u32(Server.str_hash(var.name))
             out.write_u8(var.type)
-            if (var.type == VariableType.STR):
+            if (var.type == VariableType.STR) or (var.type == VariableType.STR_ENUM):
                 content_ptrs.append(out.alloc_pointer())
+                out.write_u16(0) # padding
             else:
                 start = out.tell()
                 content_ptrs.append(None)
@@ -106,7 +118,8 @@ class ModuleHandle(ComponentHandleBase):
             if (content_ptrs[i]):
                 content_ptrs[i].set_here()
                 {
-                    VariableType.STR: out.write_cstr
+                    VariableType.STR: out.write_cstr,
+                    VariableType.STR_ENUM: out.write_cstr
                 }[self.variables[i].type](self.variables[i].value)
         
         return out.buffer()
@@ -165,6 +178,8 @@ class BombEvent:
     DEFUSAL = 5
     LIGHTS_OUT = 6
     LIGHTS_ON = 7
+    TIMER_TICK = 8
+    TIMER_SYNC = 9
 
 class BombState:
     IDLE = 'IDLE'
@@ -206,6 +221,9 @@ class Bomb:
     timer_last_updated: float
     timer_ms: float
     timer_scale: float
+    timer_last_synced: float
+
+    modules_to_defuse: set
 
     strikes: int
     strikes_max: int
@@ -225,8 +243,10 @@ class Bomb:
         self.batteries = []
         self.all_components = []
         self.timer_last_updated = None
+        self.timer_last_synced = None
         self.cause_of_explosion = None
         self.devices_remaining_to_ready = set()
+        self.modules_to_defuse = set()
         self.bomb_cfg_data = None
         self.dev_to_component_dict = dict()
         self.strikes = 0
@@ -250,7 +270,7 @@ class Bomb:
             
         class GetClockHandler(RequestHandler):
             def respond(self, request):
-                return list(bitcvtr.from_u32(bomb.timer_int()))
+                return list(bitcvtr.from_u32(bomb.real_timer_int()))
             
         class DeviceSpecificHandlerBase(RequestHandler):
             def decode(self, device: DeviceHandle, io: DataInput):
@@ -275,12 +295,18 @@ class Bomb:
                     mod:ModuleHandle = device
                     bomb.add_strike(mod.name)
 
+        class DefuseComponentHandler(DeviceSpecificHandlerBase):
+            def execute(self, request) -> None:
+                component = bomb.dev_to_component_dict.get(request['deviceid'])
+                bomb.defuse_component(component)
+
         srv.regist_handler("GetStrikes", GetStrikesHandler())
         srv.regist_handler("GetClock", GetClockHandler())
         srv.regist_handler("AckReadyToArm", AckReadyToArmHandler())
         srv.regist_handler("GetBombConfig", GetBombConfigHandler())
         srv.regist_handler("GetComponentConfigByBusAddress", GetComponentConfigHandler())
         srv.regist_handler("AddStrike", AddStrikeHandler())
+        srv.regist_handler("DefuseComponent", DefuseComponentHandler())
 
     @staticmethod
     def pack_buffer(buf: bytes):
@@ -365,20 +391,27 @@ class Bomb:
         
         serial += str(random.randint(0, 9)) #ensure digit at the end
         return serial
+    
+    def add_virtual_device(self, socket: ClientSocket):
+        self.srv.add_socket(socket, True)
 
     def device_ready(self, dev: int):
         print("Device ready:", dev)
         self.devices_remaining_to_ready.remove(dev)
 
     def handshake_callback(self, dev: DeviceHandle, io: DataInput):
+        event_bits = io.read_u32()
         type = io.read_u8()
         map = [ModuleHandle, LabelHandle, PortHandle, BatteryHandle]
         lists: list[list] = [self.modules, self.labels, self.ports, self.batteries]
         if (type < len(map)):
-            obj = map[type](dev, io)
+            obj: ComponentHandleBase = map[type](dev, io)
+            obj.accept_event_bits = event_bits
             self.all_components.append(obj)
             lists[type].append(obj)
             self.dev_to_component_dict[dev.unique_id()] = obj
+        else:
+            print("Invalid handshake component type!")
 
     def discover_modules(self) -> None:
         for list in [self.modules, self.labels, self.batteries, self.ports, self.all_components, self.dev_to_component_dict]:
@@ -395,6 +428,8 @@ class Bomb:
         self.timer_ms = self.timer_limit
         self.strikes_max = config.strikes
         self.strikes = 0
+        self.generate_serial()
+        print("Bomb serial number", self.serial_number)
 
         for cc in config.component_vars:
             dev = self.dev_to_component_dict.get(cc.id)
@@ -416,7 +451,8 @@ class Bomb:
                         VariableType.BOOL: to_bool,
                         VariableType.INT: to_int,
                         VariableType.LONG: to_int,
-                        VariableType.STR: to_str
+                        VariableType.STR: to_str,
+                        VariableType.STR_ENUM: to_str
                     }[var.type](raw_value)
 
         print("Building config binaries...")
@@ -424,7 +460,8 @@ class Bomb:
 
         self.devices_remaining_to_ready.clear()
         for component in self.all_components:
-            self.devices_remaining_to_ready.add(component.comm_device.unique_id())
+            if (component.accepts_event(BombEvent.CONFIGURE)):
+                self.devices_remaining_to_ready.add(component.comm_device.unique_id())
 
         print("Sending configuration event.")
         self.dispatchEvent(BombEvent.CONFIGURE)
@@ -435,16 +472,32 @@ class Bomb:
     def configuration_done(self) -> bool:
         return len(self.devices_remaining_to_ready) == 0
 
+    def defuse_component(self, component: ComponentHandleBase) -> None:
+        print("Component defused:",component.id(),"!")
+        self.modules_to_defuse.remove(component.id())
+        if len(self.modules_to_defuse) == 0:
+            self.defuse()
+
     def arm(self) -> None:
         self.state = BombState.INGAME
-        self.timer_ms = self.timer_limit
+        self.timer_ms = self.timer_limit + 200
         self.strikes = 0
+        self.update_timescale()
         self.timer_last_updated = None
+        self.timer_last_synced = None
+        self.modules_to_defuse.clear()
+        for module in self.modules:
+            if (module.flags & ModuleFlag.DEFUSABLE) != 0:
+                self.modules_to_defuse.add(module.id())
         self.dispatchEvent(BombEvent.ARM)
         self.update_timer() #start timer after all modules have been armed
 
     def timer_int(self) -> int:
         return int(self.timer_ms)
+    
+    def real_timer_int(self) -> int:
+        ticks = time.ticks_ms()
+        return int(self.timer_ms - time.ticks_diff(ticks, self.timer_last_updated) * self.timer_scale)
     
     def update_timescale(self) -> None:
         self.timer_scale = Bomb.STRIKE_TO_TIMER_SCALE[min(self.strikes, len(Bomb.STRIKE_TO_TIMER_SCALE) - 1)]
@@ -456,6 +509,7 @@ class Bomb:
 
     def add_strike(self, cause: str = '') -> None:
         self.strikes += 1
+        print("Strike", self.strikes, "of", self.strikes_max)
         if (self.strikes == self.strikes_max):
             self.explode(cause)
         else:
@@ -470,19 +524,35 @@ class Bomb:
         self.dispatchEvent(BombEvent.EXPLOSION)
         self.force_status_report = True
 
+    def has_game_ended(self) -> bool:
+        return self.state == BombState.SUMMARY
+
     def has_exploded(self) -> bool:
         return self.cause_of_explosion != None
+    
+    def defuse(self) -> None:
+        print("Bomb defused!")
+        self.state = BombState.SUMMARY
+        self.dispatchEvent(BombEvent.DEFUSAL)
+        self.force_status_report = True
 
     def update_timer(self) -> None:
         ts = time.ticks_ms()
         if (self.timer_last_updated is None):
             self.timer_last_updated = ts
         else:
+            last_timer = self.timer_ms
             self.timer_ms -= time.ticks_diff(ts, self.timer_last_updated) * self.timer_scale
             self.timer_last_updated = ts
             if (self.timer_ms <= 0):
                 self.timer_ms = 0
                 self.explode('Time ran out')
+            else:
+                if (self.timer_ms // 1000 != last_timer // 1000):
+                    self.dispatchEvent(BombEvent.TIMER_TICK)
+                if self.timer_last_synced is None or time.ticks_diff(ts, self.timer_last_synced) > 5000:
+                    self.dispatchEvent(BombEvent.TIMER_SYNC)
+                    self.timer_last_synced = ts
 
     def is_sync_online(self):
         return self.is_game_running() or self.configuration_in_progress()
@@ -498,7 +568,10 @@ class Bomb:
             self.srv.sync()
 
     def dispatchEvent(self, eventId: int, params = None):
-        self.srv.send_event(eventId, params)
+        packet = self.srv.make_event_packet(eventId, params)
+        for comp in self.all_components:
+            if comp.accepts_event(eventId):
+                self.srv.send_event(comp.comm_device, packet)
 
     def reset(self) -> None:
         self.state = BombState.IDLE

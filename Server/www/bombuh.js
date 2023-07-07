@@ -85,34 +85,38 @@
     document.addEventListener('DOMContentLoaded', function(e) {
         let state = null;
 
+        function endLoading() {
+            let loading = document.getElementById('loading');
+            let loaded = document.getElementById('loaded');
+            hide(loading);
+            unhide(loaded);
+        }
+
         function changeState(newState) {
             if (state) {
                 hide(':not(.visible-if-' + newState + ') .visible-if-' + state);
             }
+            state = newState;
             if (state != 'INGAME') {
                 closeGameMonitor();
             }
+            else {
+                startGameMonitor();
+            }
             if (state == 'SUMMARY') {
-                fillSummaryScreen();
+                fillSummaryScreen().then(endLoading);
+            }
+            if (state == 'IDLE') {
+                loadModules().then(endLoading);
             }
             unhide('.visible-if-' + newState);
-            state = newState;
             syncLabelWidths();
         }
 
         ajaxGet('/api/state').then(function(resp) {
-            let loading = document.getElementById('loading');
-            let loaded = document.getElementById('loaded');
             if (resp.ok) {
                 resp.json().then(function(json) {
                     changeState(json.state);
-                    if (json.state == 'INGAME') {
-                        startGameMonitor();
-                    }
-                    loadModules().then(function() {
-                        hide(loading);
-                        unhide(loaded);
-                    });
                 });
             }
             else {
@@ -224,12 +228,16 @@
                             unhide('.action-configure-bomb');
                         }
                         else {
-                            hide('.action-configure-bomb');
+                            //hide('.action-configure-bomb');
                         }
                     });
                 }
             });
         }
+
+        addListener('.action-debug-event', function(elem) {
+            ajaxPost('/api/debug-event', {'type': elem.dataset.event});
+        });
 
         addListener('.action-discover-modules', function(elem) {
             hide('.action-start-game');
@@ -260,6 +268,7 @@
         let strikes = 0;
 
         function closeGameMonitor() {
+            console.log("Close game monitor.");
             if (timerInterval !== null) {
                 clearInterval(timerInterval);
                 timerInterval = null;
@@ -273,7 +282,7 @@
         function fillSummaryScreen() {
             let content = document.getElementById('summary-content');
             hide(content);
-            ajaxGet('/api/summary').then(function(resp) {
+            return ajaxGet('/api/summary').then(function(resp) {
                 if (resp.ok) {
                     resp.json().then(function(json) {
                         if (json.exploded) {
@@ -286,7 +295,9 @@
                             unhide('#summary-defused');
                             hide('#summary-exploded');
                         }
-                        document.getElementById('time-remaining').textContent = json.time_remaining;
+                        let millis = json.time_remaining;
+                        document.getElementById('time-remaining').textContent = formatTimeMM(millis) + ":" + formatTimeSS(millis);
+                        console.log(content);
                         unhide(content);
                     });
                 }
@@ -294,7 +305,11 @@
         }
 
         function startGameMonitor() {
-            closeGameMonitor()
+            closeGameMonitor();
+            console.log("Open game monitor.");
+            if (websocket) {
+                console.log("WS already open????");
+            }
             websocket = new WebSocket('ws://' + window.location.host + '/game-monitor');
             
             websocket.onclose = function(ev) {
@@ -303,11 +318,11 @@
 
             websocket.onmessage = function(ev) {
                 let data = JSON.parse(ev.data);
-                if (data.exploded) {
+                if (data.ended) {
                     changeState('SUMMARY');
                 }
                 else {
-                    strikes = data.strikes;
+                    setStrikes(data.strikes);
                     setTimer(data.timer);
                 }
             };
@@ -337,6 +352,7 @@
         let strikesEl = document.getElementById('strikes-xs');
 
         function setStrikes(nr) {
+            strikes = nr;
             strikesEl.textContent = 'X'.repeat(nr);
         }
 
@@ -345,11 +361,21 @@
             setStrikes(0);
         }
 
-        function setTimer(millis) {
-            function zeroPad(num) {
-                return num.toString().padStart(2, '0');
-            }
+        function zeroPad(num) {
+            return num.toString().padStart(2, '0');
+        }
 
+        function formatTimeMM(millis) {
+            let seconds = Math.floor(millis / 1000);
+            return zeroPad(Math.floor(seconds / 60));
+        }
+
+        function formatTimeSS(millis) {
+            let seconds = Math.floor(millis / 1000);
+            return zeroPad(seconds % 60);
+        }
+
+        function setTimer(millis) {
             if (millis < 0) {
                 millis = 0;
             }
@@ -358,9 +384,8 @@
             if (!rendered_timer || timer < rendered_timer) {
                 rendered_timer = timer
                 if (millis > 60 * 1000) {
-                    let seconds = Math.floor(millis / 1000)
-                    timemaj.textContent = zeroPad(Math.floor(seconds / 60));
-                    timemin.textContent = zeroPad(seconds % 60);
+                    timemaj.textContent = formatTimeMM(millis);
+                    timemin.textContent = formatTimeSS(millis);
                 }
                 else {
                     timemaj.textContent = zeroPad(Math.floor(millis / 1000));
@@ -368,6 +393,14 @@
                 }
             }
         }
+
+        addListener('.action-new-game', function(elem) {
+            ajaxPost('/api/new-game').then(function(resp) {
+                if (resp.ok) {
+                    changeState('IDLE');
+                }
+            });
+        });
 
         addListener('.action-configure-bomb', function(elem) {
             elem.disabled = true;
@@ -441,7 +474,6 @@
                             resetTimerAndStrikes();
                             setTimer(json.timer);
                             changeState('INGAME');
-                            startGameMonitor();
                         });
                     });
                 }

@@ -19,9 +19,10 @@ void BombInterface::OnEvent(uint8_t eventId, void* eventData) {
             m_Client->DiscardRequests();
             break;
         case bconf::STRIKE:
-            if (m_SyncFlags & bconf::SYNC_STRIKES) {
-                SyncStrikes();
-            }
+            SyncStrikes();
+            break;
+        case bconf::TIMER_SYNC:
+            SyncGameClock();
             break;
     }
 }

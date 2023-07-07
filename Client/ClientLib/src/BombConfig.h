@@ -16,7 +16,8 @@ enum ConfigVariableType : uint8_t {
     VAR_STR,
     VAR_INT,
     VAR_LONG,
-    VAR_BOOL
+    VAR_BOOL,
+    VAR_STR_ENUM
 };
 
 struct ConfigVariable {
@@ -28,6 +29,10 @@ struct ConfigVariable {
         uint32_t    LongValue;
         bool        BoolValue;
     };
+};
+
+struct ServerCommConfig {
+    uint32_t AcceptsEvents;
 };
 
 AVR_SASSERT(sizeof(ConfigVariable) == 9)
@@ -55,6 +60,8 @@ struct ModuleConfig {
     
     const char* GetString(const char* name);
     const char* GetPermanentString(const char* name);
+
+    int GetEnum(const char* name, const char** enumValueNames, int enumMax);
 
     int GetInt(const char* name);
 

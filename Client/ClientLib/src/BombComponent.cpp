@@ -7,6 +7,10 @@ BombComponent::BombComponent() {
 
 }
 
+BombComponent::~BombComponent() {
+
+}
+
 void BombComponent::Init(BombInterface* bomb) {
     m_Bomb = bomb;
     const InfoStreamBuilderBase::VariableParam* vars = GetVariableInfo();
@@ -38,11 +42,13 @@ const InfoStreamBuilderBase::VariableParam* BombComponent::GetVariableInfo() {
     return BOMB_NO_VARIABLES;
 }
 
+bconf::BombEventBit BombComponent::GetAcceptedEvents() {
+    return bconf::NONE_BITS;
+}
+
 void BombComponent::GetInfo(void** pData, size_t* pSize) {
     *pSize = 0;
 }
-
-#include "MemoryFree.h"
 
 void BombComponent::BuildVariableInfo(InfoStreamBuilderBase* builder) {
     const InfoStreamBuilderBase::VariableParam* vars = GetVariableInfo();
@@ -97,6 +103,47 @@ void BombModule::Configure(void* config) {
 
 BombConfig::ModuleFlag DefusableModule::GetModuleFlags() {
     return BombConfig::ModuleFlag::DEFUSABLE;
+}
+
+void DefusableModule::Defuse() {
+    m_IsDefused = true;
+    m_Bomb->DefuseMe();
+    GetModuleLedDriver()->TurnOn(0x00FF00);
+    PRINTF_P("Module %s defused.\n", GetName());
+}
+
+void DefusableModule::Strike() {
+    m_LightOffTime = millis() + 1000;
+    GetModuleLedDriver()->TurnOn(0xFF0000);
+    m_Bomb->Strike();
+}
+
+void DefusableModule::Bootstrap() {
+    GetModuleLedDriver()->Init();
+}
+
+void DefusableModule::Standby() {
+    GetModuleLedDriver()->TurnOff();
+}
+
+void DefusableModule::Arm() {
+    m_IsDefused = false;
+}
+
+void DefusableModule::Update() {
+    if (m_LightOffTime) {
+        if (millis() >= m_LightOffTime) {
+            m_LightOffTime = 0;
+            GetModuleLedDriver()->TurnOff();
+        }
+    }
+    if (!m_IsDefused) {
+        ActiveUpdate();
+    }
+}
+
+void DefusableModule::ActiveUpdate() {
+
 }
 
 void BombPort::Configure(void* config) {

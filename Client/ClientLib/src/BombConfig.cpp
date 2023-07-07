@@ -10,7 +10,8 @@ ModuleConfig* ModuleConfig::FromBuffer(void* buffer) {
     ModuleConfig* cfg = reinterpret_cast<ModuleConfig*>(buffer);
     RelocatePointer(cfg->Variables.ArrayPointer(), cfg);
     for (size_t i = 0; i < cfg->Variables.Size(); i++) {
-        if (cfg->Variables[i].Type == VAR_STR) {
+        auto varType = cfg->Variables[i].Type;
+        if (varType == VAR_STR || varType == VAR_STR_ENUM) {
             RelocatePointer(&cfg->Variables[i].StringValue, cfg);
         }
     }
@@ -58,7 +59,19 @@ ConfigVariable* ModuleConfig::GetTypedVar(const char* name, ConfigVariableType t
     return nullptr;
 }
 
-const char* ModuleConfig:: GetString(const char* name) {
+int ModuleConfig::GetEnum(const char* name, const char** enumValueNames, int enumMax) {
+    if (auto var = GetTypedVar(name, VAR_STR_ENUM)) {
+        auto value = var->StringValue;
+        for (int i = 0; i < enumMax; i++) {
+            if (strcasecmp(value, enumValueNames[i]) == 0) {
+                return i;
+            }
+        }
+    }
+    return 0;
+}
+
+const char* ModuleConfig::GetString(const char* name) {
     if (auto var = GetTypedVar(name, VAR_STR)) {
         return var->StringValue;
     }

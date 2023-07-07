@@ -76,7 +76,11 @@ public:
 	}
 
 	bconf::SyncFlag GetSyncFlags() {
-		return bconf::SYNC_CLOCK | bconf::FETCH_CONFIG | bconf::SYNC_STRIKES;
+		return bconf::FETCH_CONFIG;
+	}
+
+	bconf::BombEventBit GetAcceptedEvents() override {
+		return bconf::STRIKE_BIT | bconf::TIMER_SYNC_BIT | bconf::LIGHTS_BITS;
 	}
 };
 

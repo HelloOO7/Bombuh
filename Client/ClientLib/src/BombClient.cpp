@@ -217,6 +217,9 @@ void BombClient::QueueRequest(const char* handlerName)  {
     if (allocIndex != REQUEST_POOL_FULL) {
         InsertRequest(allocIndex, handlerName, nullptr, 0, nullptr, nullptr);
     }
+    else {
+        PRINTF_P("Could not insert request for %s - queue full!\n", handlerName);
+    }
 }
 
 void BombClient::DiscardRequests() {

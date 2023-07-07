@@ -8,6 +8,8 @@ import boardconst
 import bitcvtr
 from bitcvtr import *
 
+from synch import Semaphore
+
 class ClientSocket:
     COMM_MAGIC_START = 0xFE
     COMM_MAGIC_END = 0xEF
@@ -15,15 +17,20 @@ class ClientSocket:
 
     i2c: I2C
     device: int
-    i2c_mutex: _thread.LockType
+    global_i2c_mutex: Semaphore = Semaphore()
 
     def __init__(self, i2c, device) -> None:
         self.i2c = i2c
         self.device = device
-        self.i2c_mutex = _thread.allocate_lock()
 
-    def send_packet(self, content) -> None:
-        self.i2c_mutex.acquire()
+    def lock_mutex(self):
+        ClientSocket.global_i2c_mutex.lock()
+
+    def release_mutex(self):
+        ClientSocket.global_i2c_mutex.release()
+
+    def send_packet(self, content: bytes) -> None:
+        self.lock_mutex()
         out = DataOutput().write_u8(ClientSocket.COMM_MAGIC_START).write_u16(len(content))
         if type(content) is bytes:
             out.write(content)
@@ -38,10 +45,10 @@ class ClientSocket:
             self.send(buf[index:index + write_size])
             size -= write_size
             index += write_size
-        self.i2c_mutex.release()
+        self.release_mutex()
 
     def read_packet(self) -> bytes:
-        self.i2c_mutex.acquire()
+        self.lock_mutex()
         header = self.read(3, True)
         if (header[0] != ClientSocket.COMM_MAGIC_START):
             print("Invalid packet start: ", header)
@@ -54,7 +61,7 @@ class ClientSocket:
             size -= read_size
 
         print("Read packet content", ret)
-        self.i2c_mutex.release()
+        self.release_mutex()
         return ret
     
     @staticmethod
@@ -96,9 +103,6 @@ class ClientSocket:
             print("len:", len(buf), "data:", buf, file=sys.stderr)
             raise e
 
-    def read_into(self, buf):
-        self.i2c.readfrom_into(self.device, buf)
-
     def read(self, size: int, stop):
         return self.i2c.readfrom(self.device, size, stop)
     
@@ -131,22 +135,24 @@ class Server:
 
     i2c: I2C
     devices: list[ClientSocket]
+    permanent_devices: list[ClientSocket]
 
     handlers: dict[int, RequestHandler]
 
-    mutex: _thread.LockType
+    mutex: Semaphore
 
     def __init__(self) -> None:
         self.i2c = I2C(0, freq=boardconst.I2C_BAUDRATE, scl=Pin(boardconst.PIN_I2C_SCL), sda=Pin(boardconst.PIN_I2C_SDA), timeout=500000)
         self.devices = []
-        self.mutex = _thread.allocate_lock()
+        self.mutex = Semaphore()
         self.handlers = {}
+        self.permanent_devices = []
 
     def i2cwrite(self, addr:int, list) -> None:
         self.i2c.writeto(addr, bytes(list))
 
     def lock_mutex(self):
-        self.mutex.acquire()
+        self.mutex.lock()
 
     def release_mutex(self):
         self.mutex.release()
@@ -163,8 +169,16 @@ class Server:
                 self.add_device(dev)
             else:
                 print("Device ping failed")
+        
+        for perm in self.permanent_devices:
+            self.devices.append(perm)
 
         self.release_mutex()
+
+    def add_socket(self, socket: ClientSocket, permanent: bool = False):
+        self.devices.append(socket)
+        if (permanent):
+            self.permanent_devices.append(socket)
 
     def shake_hands(self, callback) -> None:
         self.lock_mutex()
@@ -229,12 +243,14 @@ class Server:
 
         self.release_mutex()
 
-    def send_event(self, id: int, params = None):
-        self.lock_mutex()
+    def make_event_packet(self, id: int, params = None):
         data = [id]
         if (params):
             data += params
-        for dev in self.devices:
-            dev.send_command(Server.CMD_EVENT, data)
+        return data
+
+    def send_event(self, dev: DeviceHandle, event_packet):
+        self.lock_mutex()
+        dev.__socket__.send_command(Server.CMD_EVENT, event_packet)
         self.release_mutex()
 

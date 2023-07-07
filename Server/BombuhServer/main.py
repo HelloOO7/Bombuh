@@ -10,6 +10,7 @@ from bomb import *
 import wlan
 import web
 from bitcvtr import *
+from mod_sfx import SfxModule
 
 print("BombuhServer")
 
@@ -20,6 +21,7 @@ def main():
 
     srv = Server()
     bomb = Bomb(srv)
+    bomb.add_virtual_device(SfxModule(bomb).create_socket())
     print("Discovering I2C devices...")
     bomb.discover_modules()
     print("Device scan done")

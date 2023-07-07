@@ -11,8 +11,6 @@ namespace bconf {
     enum SyncFlag {
         SYNC_NOTHING,
         FETCH_CONFIG = (1 << 0),
-        SYNC_CLOCK = (1 << 1),
-        SYNC_STRIKES = (1 << 2)
     };
 
     enum BombEvent {
@@ -23,8 +21,30 @@ namespace bconf {
         EXPLOSION,
         DEFUSAL,
         LIGHTS_OUT,
-        LIGHTS_ON
+        LIGHTS_ON,
+        TIMER_TICK,
+        TIMER_SYNC, //like TIMER_TICK but less frequent. TIMER_TICK fires every second (!)
     };
+
+    enum BombEventBit {
+        NONE_BITS = 0,
+        RESET_BIT = (1 << RESET),
+        CONFIGURE_BIT = (1 << CONFIGURE),
+        ARM_BIT = (1 << ARM),
+        STRIKE_BIT = (1 << STRIKE),
+        EXPLOSION_BIT = (1 << EXPLOSION),
+        DEFUSAL_BIT = (1 << DEFUSAL),
+        LIGHTS_OUT_BIT = (1 << LIGHTS_OUT),
+        LIGHTS_ON_BIT = (1 << LIGHTS_ON),
+        TIMER_TICK_BIT = (1 << TIMER_TICK),
+        TIMER_SYNC_BIT = (1 << TIMER_SYNC),
+
+        LIGHTS_BITS = LIGHTS_OUT_BIT | LIGHTS_ON_BIT,
+
+        ALWAYS_LISTEN_BITS = RESET_BIT | CONFIGURE_BIT | ARM_BIT | EXPLOSION_BIT | DEFUSAL_BIT
+    };
+
+    DEFINE_ENUM_FLAG_OPERATORS(BombEventBit)
 
     DEFINE_ENUM_FLAG_OPERATORS(SyncFlag)
 }

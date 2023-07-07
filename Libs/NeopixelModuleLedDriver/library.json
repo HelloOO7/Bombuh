@@ -1,0 +1,16 @@
+{
+    "name": "NeopixelModuleLedDriver",
+    "version": "1.0.0",
+    "description": "Neopixel module LED driver for BombuhClient modules.",
+    "keywords": "bomb, game, led",
+    "authors":
+    [
+      {
+        "name": "Čeněk Řehoř",
+        "email": "cendarehor@gmail.com"
+      }
+    ],
+    "license": "MIT",
+    "frameworks": "*",
+    "platforms": "*"
+  }

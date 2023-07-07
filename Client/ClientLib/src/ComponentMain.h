@@ -4,7 +4,6 @@
 #include "BombComponent.h"
 #include "lambda.h"
 #include "UARTPrint.h"
-#include "MemoryFree.h"
 
 class ComponentMain {
 private:

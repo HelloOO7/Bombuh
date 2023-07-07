@@ -7,6 +7,7 @@ class BombComponent;
 #include "BombConfig.h"
 #include "Common.h"
 #include "GameEvent.h"
+#include "ModuleLedDriver.h"
 
 #define BOMB_VARIABLES_ARRAY(...) (const InfoStreamBuilderBase::VariableParam[]) {__VA_ARGS__, {nullptr, VAR_NULLTYPE}}
 #define BOMB_NO_VARIABLES (const InfoStreamBuilderBase::VariableParam[]){{nullptr, VAR_NULLTYPE}}
@@ -24,12 +25,16 @@ private:
     bool m_BombConfigDone;
 
 public:
+    virtual ~BombComponent();
+
     void Init(BombInterface* bomb);
 
     virtual void Configure(void* config);
     virtual void Configure(BombConfig* config);
 
     void ClearConfiguredFlags();
+
+    virtual bconf::BombEventBit GetAcceptedEvents();
 
     virtual void Reset();
 
@@ -69,9 +74,9 @@ protected:
     }
 };
 
-class BombModule : public BombComponent, NamedComponentTrait {
+class BombModule : public BombComponent, public NamedComponentTrait {
     
-    virtual void ConfigureModule(ModuleConfig* config);
+    virtual void ConfigureModule(ModuleConfig* config) = 0;
     void Configure(void* config) override; 
 
     virtual BombConfig::ModuleFlag GetModuleFlags();
@@ -80,13 +85,30 @@ class BombModule : public BombComponent, NamedComponentTrait {
 };
 
 class DefusableModule : public BombModule {
-    
+private:
+    bool m_IsDefused;
+    unsigned long long m_LightOffTime;
+public:
     BombConfig::ModuleFlag GetModuleFlags() override;
+
+protected:
+    void Defuse();
+    void Strike();
+
+    virtual ModuleLedDriver* GetModuleLedDriver() = 0;
+
+public:
+    virtual void Bootstrap() override;
+    virtual void Standby() override;
+    virtual void Arm() override;
+
+    void Update() override;
+    virtual void ActiveUpdate();
 };
 
 class BombPort : public BombComponent, NamedComponentTrait {
 
-    virtual void ConfigurePort(PortConfig* config);
+    virtual void ConfigurePort(PortConfig* config) = 0;
     void Configure(void* config) override;
 
     void GetInfo(void** pData, size_t* pSize) override;
@@ -96,7 +118,7 @@ class BombLabel : public BombComponent {
 
     virtual const char** GetTextOptions() = 0;
 
-    virtual void ConfigureLabel(LabelConfig* config);
+    virtual void ConfigureLabel(LabelConfig* config) = 0;
     void Configure(void* config) override;
 
     void GetInfo(void** pData, size_t* pSize) override;
@@ -107,7 +129,7 @@ class BombBattery : public BombComponent {
     virtual uint8_t GetBatteryCount() = 0;
     virtual uint8_t GetBatterySize() = 0;
 
-    virtual void ConfigureBattery(BatteryConfig* config);
+    virtual void ConfigureBattery(BatteryConfig* config) = 0;
     void Configure(void* config) override;
 
     void GetInfo(void** pData, size_t* pSize) override;

@@ -1,7 +1,6 @@
 #include "BombComponent.h"
 #include "lambda.h"
 #include "UARTPrint.h"
-#include "MemoryFree.h"
 #include "ComponentMain.h"
 
 ComponentMain::ComponentMain() : m_IsArmed{false}, m_RequestedState{StateRequest::NONE} {
@@ -24,14 +23,23 @@ void ComponentMain::Setup(BombComponent* module) {
     m_Component->Standby();
 
     m_BombCl.SetHandshakeHandler(function(void** pData, size_t* pSize, BombComponent* module) {
-        module->GetInfo(pData, pSize);
+        void* mainData;
+        size_t mainSize;
+        module->GetInfo(&mainData, &mainSize);
+        size_t allSize = mainSize + sizeof(ServerCommConfig);
+        void* allData = realloc(mainData, allSize);
+        memmove(reinterpret_cast<char*>(allData) + sizeof(ServerCommConfig), allData, mainSize);
+        ServerCommConfig* commCfg = reinterpret_cast<ServerCommConfig*>(allData);
+        commCfg->AcceptsEvents = module->GetAcceptedEvents() | bconf::ALWAYS_LISTEN_BITS;
+        *pData = allData;
+        *pSize = allSize;
     }, m_Component);
     m_BombCl.AddEventDispatcher(DoDispatchEvent, this);
 
     int addr = AddressObtainer::FromAnalogPin(A6);
     PRINTF_P("Address: %d\n", addr);
     m_BombCl.Attach(addr);
-    PRINTF_P("Setup done. Free memory: %d\n", freeMemory());
+    PRINTLN_P("Setup done.");
 }
 
 void ComponentMain::Loop() {

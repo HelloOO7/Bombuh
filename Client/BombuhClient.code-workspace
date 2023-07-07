@@ -10,7 +10,21 @@
 		{
 			"name": "TestModule",
 			"path": "../Modules/TestModule"
+		},
+		{
+			"name": "NeopixelModuleLedDriver",
+			"path": "../Libs/NeopixelModuleLedDriver"
+		},
+		{
+			"name": "WiresModule",
+			"path": "../Modules/WiresModule"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"files.associations": {
+			"*.tcc": "cpp",
+			"functional": "cpp",
+			"tuple": "cpp"
+		}
+	}
 }

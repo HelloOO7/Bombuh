@@ -15,7 +15,7 @@ class WsGameMonitor:
 
 	def send_state(self, bomb: Bomb):
 		for socket in self.sockets:
-			socket.SendText(json.dumps({'timer': bomb.timer_int(), 'strikes': bomb.strikes, 'exploded': bomb.has_exploded()}))
+			socket.SendText(json.dumps({'timer': bomb.timer_int(), 'strikes': bomb.strikes, 'ended': bomb.has_game_ended()}))
 
 	def close_all(self):
 		for socket in self.sockets:
@@ -42,6 +42,17 @@ def apiGetSummary(client, response: MicroWebSrv._response):
 	if (wwwBomb.has_exploded()):
 		dct['cause_of_explosion'] = wwwBomb.cause_of_explosion
 	response.WriteResponseJSONOk(dct)
+
+@MicroWebSrv.route('/api/debug-event', 'POST')
+def apiDebugEvent(client: MicroWebSrv._client, response: MicroWebSrv._response):
+	evtype = client.ReadRequestContentAsJSON()['type']
+	if evtype == 'strike':
+		wwwBomb.add_strike('Debug event')
+	elif evtype == 'defuse':
+		wwwBomb.defuse()
+	elif evtype == 'explode':
+		wwwBomb.explode('Debug event')
+	response.WriteResponseOk()
 
 @MicroWebSrv.route('/api/exit-app', 'POST')
 def apiExitApp(client, response: MicroWebSrv._response):
@@ -101,6 +112,11 @@ def apiStartGame(client, response: MicroWebSrv._response):
 	wwwBomb.arm()
 	response.WriteResponseOk()
 
+@MicroWebSrv.route('/api/new-game', 'POST')
+def apiNewGame(client, response: MicroWebSrv._response):
+	wwwBomb.reset()
+	response.WriteResponseOk()
+
 @MicroWebSrv.route('/api/stop-game', 'POST')
 def apiStopGame(client, response: MicroWebSrv._response):
 	wwwBomb.reset()
@@ -136,6 +152,7 @@ def start_thread(bomb: Bomb):
 	gameMonitor = WsGameMonitor()
 	_thread.stack_size(16384)
 	mws.Start(threaded=True)
+	_thread.stack_size(4096)
 
 def shutdown():
 	global mwsServer, wwwBomb, gameMonitor

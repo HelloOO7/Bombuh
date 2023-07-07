@@ -9,5 +9,6 @@
 void print_init(unsigned long baud);
 
 #define PRINTF_P(format, ...) printf_P(PSTR(format), __VA_ARGS__)
+#define PRINTLN_P(str) puts_P(PSTR(str))
 
 #endif

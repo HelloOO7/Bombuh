@@ -28,6 +28,10 @@
 				border-style: solid;
 				border-color: red;
 			}
+
+			.text-red {
+				color: red;
+			}
 		</style>
 		<h1>Ovládací panel bomby</h1>
 		<div id="loading">
@@ -54,7 +58,7 @@
 
 					</div>
 
-					<button type="button" class="action-configure-bomb hidden">Použít konfiguraci</button>	
+					<button type="button" class="action-configure-bomb">Použít konfiguraci</button>	
 					<button type="button" class="action-start-game hidden">Start hry</button>
 				</form>
 				<div class="hidden visible-if-INGAME" id="countdown">
@@ -62,7 +66,13 @@
 						<h1><span id="timer-major"></span>:<span id="timer-minor"></span></h1>
 					</div>
 					<div>
-						<h3>Strikes: <span id="strikes-xs">XXX</span></h3>
+						<h3>Strikes: <span id="strikes-xs" class="text-red">XXX</span></h3>
+					</div>
+					<div>
+						<div>Ladicí funkce</div>
+						<button type="button" class="action-debug-event" data-event="strike">Přidat strike</button>
+						<button type="button" class="action-debug-event" data-event="explode">Detonovat</button>
+						<button type="button" class="action-debug-event" data-event="defuse">Zneškodnit</button>
 					</div>
 					<div>
 						<button type="button" class="action-stop-game">Ukončit hru</button>
@@ -79,6 +89,9 @@
 						</div>
 						<div>
 							<h4>Time remaining: <span id="time-remaining"></span></h4>
+						</div>
+						<div>
+							<button type="button" class="action-new-game">Nová hra</button>
 						</div>
 					</div>
 				</div>
