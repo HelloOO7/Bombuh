@@ -35,7 +35,7 @@ static const char* WIRE_COLOR_NAMES[] = {
 	"Yellow"
 };
 
-class WiresModule : public DefusableModule, NeopixelLedModuleTrait {
+class MazeModule : public DefusableModule, NeopixelLedModuleTrait {
 private:
 	static constexpr int WIRE_COUNT = 6;
 	static constexpr int WIRE_0_PIN = 9;
@@ -72,7 +72,7 @@ private:
 	WireWatcher m_Wires[6];
 
 public:
-	WiresModule() {
+	MazeModule() {
 		SetModuleLedPin(2);
 		for (int i = WIRE_0_PIN; i >= WIRE_5_PIN; i--) {
 			pinMode(i, INPUT_PULLUP);
@@ -89,10 +89,6 @@ public:
 
 	ModuleLedDriver* GetModuleLedDriver() override {
 		return GetNeopixelLedDriver();
-	}
-
-	void Reset() override {
-		
 	}
 
 	void Standby() override {
@@ -209,7 +205,7 @@ public:
 	}
 };
 
-WiresModule mod;
+MazeModule mod;
 
 void setup() {
 	ComponentMain::GetInstance()->Setup(&mod);

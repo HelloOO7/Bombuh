@@ -87,7 +87,7 @@ class BombModule : public BombComponent, public NamedComponentTrait {
 class DefusableModule : public BombModule {
 private:
     bool m_IsDefused;
-    unsigned long long m_LightOffTime;
+    unsigned long m_LightOffTime;
 public:
     BombConfig::ModuleFlag GetModuleFlags() override;
 
@@ -100,6 +100,7 @@ protected:
 public:
     virtual void Bootstrap() override;
     virtual void Standby() override;
+    virtual void Reset() override;
     virtual void Arm() override;
 
     void Update() override;

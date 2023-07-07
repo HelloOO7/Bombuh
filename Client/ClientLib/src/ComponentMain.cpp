@@ -83,10 +83,10 @@ void ComponentMain::DispatchEvent(uint8_t id, void* data) {
             m_BombInterface->LoadComponentConfig(m_Component);
             break;
         case bconf::BombEvent::RESET:
+        case bconf::BombEvent::EXPLOSION:
             m_RequestedState = StateRequest::RESET;
             break;
         case bconf::BombEvent::DEFUSAL:
-        case bconf::BombEvent::EXPLOSION:
             m_RequestedState = StateRequest::STANDBY;
             break;
         case bconf::BombEvent::ARM:

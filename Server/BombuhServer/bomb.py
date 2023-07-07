@@ -428,7 +428,7 @@ class Bomb:
         self.timer_ms = self.timer_limit
         self.strikes_max = config.strikes
         self.strikes = 0
-        self.generate_serial()
+        self.set_random_serial()
         print("Bomb serial number", self.serial_number)
 
         for cc in config.component_vars:

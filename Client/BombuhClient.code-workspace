@@ -18,6 +18,14 @@
 		{
 			"name": "WiresModule",
 			"path": "../Modules/WiresModule"
+		},
+		{
+			"name": "MazeModule",
+			"path": "../Modules/MazeModule"
+		},
+		{
+			"name": "ButtonModule",
+			"path": "../Modules/ButtonModule"
 		}
 	],
 	"settings": {

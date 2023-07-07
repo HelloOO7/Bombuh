@@ -122,8 +122,11 @@ void DefusableModule::Bootstrap() {
     GetModuleLedDriver()->Init();
 }
 
-void DefusableModule::Standby() {
+void DefusableModule::Reset() {
     GetModuleLedDriver()->TurnOff();
+}
+
+void DefusableModule::Standby() {
 }
 
 void DefusableModule::Arm() {

@@ -82,11 +82,11 @@ namespace game {
 
     template<typename C>
     Event<C>* CreateWaitEvent(long ms) {
-        unsigned long long* data = new unsigned long long[2];
+        unsigned long* data = new unsigned long[2];
         data[0] = 0;
         data[1] = ms;
-        return (new Event<C>(function(Event<C>* e, C* context, unsigned long long* data) {
-            unsigned long long time = millis();
+        return (new Event<C>(function(Event<C>* e, C* context, unsigned long* data) {
+            unsigned long time = millis();
             if (!data[0]) {
                 data[0] = time + data[1];
             }

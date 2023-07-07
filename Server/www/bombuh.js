@@ -101,7 +101,7 @@
                 closeGameMonitor();
             }
             else {
-                startGameMonitor();
+                startGameMonitor(endLoading);
             }
             if (state == 'SUMMARY') {
                 fillSummaryScreen().then(endLoading);
@@ -304,7 +304,7 @@
             });
         }
 
-        function startGameMonitor() {
+        function startGameMonitor(callback = null) {
             closeGameMonitor();
             console.log("Open game monitor.");
             if (websocket) {
@@ -316,12 +316,18 @@
                 websocket = null;
             };
 
+            let firstMessage = true;
+
             websocket.onmessage = function(ev) {
                 let data = JSON.parse(ev.data);
                 if (data.ended) {
                     changeState('SUMMARY');
                 }
                 else {
+                    if (firstMessage && callback) {
+                        callback();
+                        firstMessage = false;
+                    }
                     setStrikes(data.strikes);
                     setTimer(data.timer);
                 }
