@@ -30,6 +30,24 @@ BombConfig* BombConfig::FromBuffer(void* buffer) {
     return cfg;
 }
 
+int BombConfig::BatteryCount() {
+    int cnt = 0;
+    for (size_t i = 0; i < Batteries.Size(); i++) {
+        cnt += Batteries[i].Count;
+    }
+    return cnt;
+}
+
+bool BombConfig::IsLabelPresent(const char* name, bool mustBeLit) {
+    IDHASH hash = HashID(name);
+    for (size_t i = 0; i < Labels.Size(); i++) {
+        if (Labels[i].Name == hash && (!mustBeLit || Labels[i].IsLit)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 BombConfig::Module* BombConfig::GetModuleInfo(const char* name)  {
     IDHASH hash = HashID(name);
     for (size_t i = 0; i < Modules.Size(); i++) {
@@ -59,7 +77,7 @@ ConfigVariable* ModuleConfig::GetTypedVar(const char* name, ConfigVariableType t
     return nullptr;
 }
 
-int ModuleConfig::GetEnum(const char* name, const char** enumValueNames, int enumMax) {
+int ModuleConfig::GetEnum(const char* name, const char* const* enumValueNames, int enumMax) {
     if (auto var = GetTypedVar(name, VAR_STR_ENUM)) {
         auto value = var->StringValue;
         for (int i = 0; i < enumMax; i++) {

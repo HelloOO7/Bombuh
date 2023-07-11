@@ -306,6 +306,24 @@
 
         function startGameMonitor(callback = null) {
             closeGameMonitor();
+            
+            let semaphore = 0;
+            function notifySemaphore() {
+                semaphore--;
+                if (semaphore == 0 && callback) {
+                    callback();
+                }
+            }
+            
+            semaphore++;
+            ajaxGet('/api/bomb-info').then(function(resp) {
+                if (resp.ok) {
+                    resp.json().then(function(json) {
+                        document.getElementById('bomb-serial').textContent = json.serial;
+                        notifySemaphore();
+                    });
+                }
+            });
             console.log("Open game monitor.");
             if (websocket) {
                 console.log("WS already open????");
@@ -318,14 +336,15 @@
 
             let firstMessage = true;
 
+            semaphore++;
             websocket.onmessage = function(ev) {
                 let data = JSON.parse(ev.data);
                 if (data.ended) {
                     changeState('SUMMARY');
                 }
                 else {
-                    if (firstMessage && callback) {
-                        callback();
+                    if (firstMessage) {
+                        notifySemaphore();
                         firstMessage = false;
                     }
                     setStrikes(data.strikes);

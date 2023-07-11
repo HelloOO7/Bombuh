@@ -270,7 +270,7 @@ class Bomb:
             
         class GetClockHandler(RequestHandler):
             def respond(self, request):
-                return list(bitcvtr.from_u32(bomb.real_timer_int()))
+                return bitcvtr.from_u32(bomb.real_timer_int()) + bitcvtr.from_f32(bomb.timer_scale)
             
         class DeviceSpecificHandlerBase(RequestHandler):
             def decode(self, device: DeviceHandle, io: DataInput):
@@ -479,17 +479,18 @@ class Bomb:
             self.defuse()
 
     def arm(self) -> None:
-        self.state = BombState.INGAME
         self.timer_ms = self.timer_limit + 200
         self.strikes = 0
         self.update_timescale()
         self.timer_last_updated = None
         self.timer_last_synced = None
+        self.cause_of_explosion = None
         self.modules_to_defuse.clear()
         for module in self.modules:
             if (module.flags & ModuleFlag.DEFUSABLE) != 0:
                 self.modules_to_defuse.add(module.id())
         self.dispatchEvent(BombEvent.ARM)
+        self.state = BombState.INGAME
         self.update_timer() #start timer after all modules have been armed
 
     def timer_int(self) -> int:
@@ -515,6 +516,7 @@ class Bomb:
         else:
             self.update_timescale()
             self.dispatchEvent(BombEvent.STRIKE)
+            self.dispatchEvent(BombEvent.TIMER_SYNC) # sync timescale
             self.force_status_report = True
 
     def explode(self, cause: str) -> None:
@@ -533,6 +535,7 @@ class Bomb:
     def defuse(self) -> None:
         print("Bomb defused!")
         self.state = BombState.SUMMARY
+        self.cause_of_explosion = None
         self.dispatchEvent(BombEvent.DEFUSAL)
         self.force_status_report = True
 

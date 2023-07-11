@@ -178,7 +178,7 @@ void BombClient::FlushRequests() {
     for (size_t i = 0; i < REQUEST_POOL_LIMIT; i++) {
         if (mask & BitMask(i)) {
             entryCount++;
-            packetSize += 6 + m_RequestPool[i].ParamsSize;
+            packetSize += 7 + m_RequestPool[i].ParamsSize;
         }
     }
     char* pbuf = new char[packetSize];
@@ -188,6 +188,7 @@ void BombClient::FlushRequests() {
     for (size_t i = 0; i < REQUEST_POOL_LIMIT; i++) {
         if (mask & BitMask(i)) {
             ServerRequest* r = &m_RequestPool[i];
+            *(pstream++) = i;
             memcpy(pstream, &r->HandlerID, sizeof(r->HandlerID));
             pstream += sizeof(r->HandlerID);
             memcpy(pstream, &r->ParamsSize, sizeof(r->ParamsSize));

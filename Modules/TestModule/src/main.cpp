@@ -61,7 +61,7 @@ public:
 
 	}
 
-	void ConfigureModule(ModuleConfig* config) override {
+	void LoadConfiguration(ModuleConfig* config) override {
 		m_BlinkInterval = config->GetInt("Interval blikání");
 	}
 

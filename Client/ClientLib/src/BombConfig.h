@@ -61,7 +61,7 @@ struct ModuleConfig {
     const char* GetString(const char* name);
     const char* GetPermanentString(const char* name);
 
-    int GetEnum(const char* name, const char** enumValueNames, int enumMax);
+    int GetEnum(const char* name, const char* const* enumValueNames, int enumMax);
 
     int GetInt(const char* name);
 
@@ -132,6 +132,9 @@ struct BombConfig
     FixedArrayRef<Label>   Labels;
     FixedArrayRef<Port>    Ports;
     FixedArrayRef<Battery> Batteries;
+
+    int BatteryCount();
+    bool IsLabelPresent(const char* name, bool mustBeLit = true);
 
     Module* GetModuleInfo(const char* name);
 

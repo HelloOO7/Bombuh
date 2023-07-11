@@ -252,11 +252,17 @@ public:
 
 	void Arm() override {
 		DefusableModule::Arm();
+		for (int i = 0; i < MAZE_DIM; i++) {
+			for (int j = 0; j < MAZE_DIM; j++) {
+				m_MazeMap.Cells[i][j] &= 0xF; //reset states
+			}
+		}
 		PRINTF_P("Ident 1: %d:%d\n", m_MazeMap.Id1.X, m_MazeMap.Id1.Y);
 		PRINTF_P("Ident 2: %d:%d\n", m_MazeMap.Id2.X, m_MazeMap.Id2.Y);
+		m_HeroPos = m_StartPoint;
 		InitDispPos(m_MazeMap.Id1, COLOR_IDENT);
 		InitDispPos(m_MazeMap.Id2, COLOR_IDENT);
-		InitDispPos(m_StartPoint, COLOR_HERO);
+		InitDispPos(m_HeroPos, COLOR_HERO);
 		InitDispPos(m_EndPoint, COLOR_TREASURE);
 		m_MazeStrip.show();
 	}
@@ -301,7 +307,7 @@ public:
 		return point.Equals(m_MazeMap.Id1) || point.Equals(m_MazeMap.Id2);
 	}
 
-	void Configure(BombConfig* config) override {
+	void LoadConfiguration(BombConfig* config) override {
 		randomSeed(config->RandomSeed);
 		int mazeId = random(sizeof(MAZES) / sizeof(MAZES[0]));
 		PRINTF_P("Generated maze ID: %d\n", mazeId);
@@ -317,10 +323,9 @@ public:
 			) {
 			RandomPoint(&m_EndPoint);
 		}
-		m_HeroPos = m_StartPoint;
 	}
 
-	void ConfigureModule(ModuleConfig* config) override {
+	void LoadConfiguration(ModuleConfig* config) override {
 		
 	}
 

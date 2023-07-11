@@ -218,14 +218,15 @@ class Server:
             response = device.send_command(Server.CMD_POLL)
             file = DataInput(BytesIO(response))
             count = file.read_u8()
-            for qid in range(count):
+            for i in range(count):
+                channel = file.read_u8()
                 command_hash = file.read_u32()
                 params_size = file.read_u16()
                 print("Device", device, "requested command", command_hash, "params size", params_size, "total size", len(response), "pos", file.tell())
                 params_start = file.tell()
                 handler = self.handlers[command_hash]
                 if (handler):
-                    exec_queue.append((device, qid, handler, handler.decode(DeviceHandle(device), file)))
+                    exec_queue.append((device, channel, handler, handler.decode(DeviceHandle(device), file)))
 
                 file.seek(params_start + params_size)
 

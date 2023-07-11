@@ -101,6 +101,7 @@ public:
 			m_Wires[i].SetPin(WIRE_0_PIN - m_WireLut[i]);
 		}
 		memset(m_WiresCut, 0, sizeof(m_WiresCut));
+		PRINTF_P("Wire to cut: %d\n", m_WireToCut + 1);
 	}
 
 	void ActiveUpdate() override {
@@ -172,11 +173,15 @@ public:
 		return -1;
 	}
 
-	void Configure(BombConfig* config) override {
+	void Configure() override {
+		m_WireToCut = DetermineWireToCut();
+	}
+
+	void LoadConfiguration(BombConfig* config) override {
 		m_SerialSuffixOdd = config->SerialFlags & BombConfig::LAST_DIGIT_ODD;
 	}
 
-	void ConfigureModule(ModuleConfig* config) override {
+	void LoadConfiguration(ModuleConfig* config) override {
 		m_PresentWires = 0;
 		memset(m_WireCountsByColor, 0, sizeof(m_WireCountsByColor));
 		for (int i = 0; i < WIRE_COUNT; i++) {
@@ -188,8 +193,6 @@ public:
 			}
 			m_WireCountsByColor[m_WireColors[i]]++;
 		}
-		m_WireToCut = DetermineWireToCut();
-		PRINTF_P("Wire to cut: %d\n", m_WireToCut + 1);
 	}
 
 	const InfoStreamBuilderBase::VariableParam* GetVariableInfo() override {

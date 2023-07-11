@@ -13,8 +13,10 @@ ComponentMain* ComponentMain::GetInstance() {
     return &_inst;
 }
 
-void ComponentMain::Setup(BombComponent* module) {
-    print_init(115200);
+void ComponentMain::Setup(BombComponent* module, bool disableSerial) {
+    if (!disableSerial) {
+        print_init(115200);
+    }
     m_BombInterface = new BombInterface(&m_BombCl, module->GetSyncFlags());
 
     m_Component = module;

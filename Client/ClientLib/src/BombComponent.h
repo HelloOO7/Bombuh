@@ -29,8 +29,10 @@ public:
 
     void Init(BombInterface* bomb);
 
-    virtual void Configure(void* config);
-    virtual void Configure(BombConfig* config);
+    virtual void LoadConfiguration(void* config);
+    virtual void LoadConfiguration(BombConfig* config);
+
+    virtual void Configure();
 
     void ClearConfiguredFlags();
 
@@ -72,12 +74,24 @@ protected:
     EventfulComponentTrait() : m_Events(static_cast<M*>(this)) {
 
     }
+
+    inline void StartEvent(game::Event<M>* event, game::EventChainHandle<M>* handle = nullptr) {
+        m_Events.Start(event, handle);
+    }
+
+    inline void CancelAllEvents() {
+        m_Events.CancelAll();
+    }
+
+    inline void Standby() {
+        m_Events.CancelAll();
+    }
 };
 
 class BombModule : public BombComponent, public NamedComponentTrait {
     
-    virtual void ConfigureModule(ModuleConfig* config) = 0;
-    void Configure(void* config) override; 
+    virtual void LoadConfiguration(ModuleConfig* config) = 0;
+    void LoadConfiguration(void* config) override; 
 
     virtual BombConfig::ModuleFlag GetModuleFlags();
 
@@ -109,8 +123,8 @@ public:
 
 class BombPort : public BombComponent, NamedComponentTrait {
 
-    virtual void ConfigurePort(PortConfig* config) = 0;
-    void Configure(void* config) override;
+    virtual void LoadConfiguration(PortConfig* config) = 0;
+    void LoadConfiguration(void* config) override;
 
     void GetInfo(void** pData, size_t* pSize) override;
 };
@@ -119,8 +133,8 @@ class BombLabel : public BombComponent {
 
     virtual const char** GetTextOptions() = 0;
 
-    virtual void ConfigureLabel(LabelConfig* config) = 0;
-    void Configure(void* config) override;
+    virtual void LoadConfiguration(LabelConfig* config) = 0;
+    void LoadConfiguration(void* config) override;
 
     void GetInfo(void** pData, size_t* pSize) override;
 };
@@ -130,8 +144,8 @@ class BombBattery : public BombComponent {
     virtual uint8_t GetBatteryCount() = 0;
     virtual uint8_t GetBatterySize() = 0;
 
-    virtual void ConfigureBattery(BatteryConfig* config) = 0;
-    void Configure(void* config) override;
+    virtual void LoadConfiguration(BatteryConfig* config) = 0;
+    void LoadConfiguration(void* config) override;
 
     void GetInfo(void** pData, size_t* pSize) override;
 };

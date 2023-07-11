@@ -42,11 +42,15 @@ public:
 		
 	}
 
-	void Configure(BombConfig* config) override {
+	void Configure() override {
 		
 	}
 
-	void ConfigureModule(ModuleConfig* config) override {
+	void LoadConfiguration(BombConfig* config) override {
+		
+	}
+
+	void LoadConfiguration(ModuleConfig* config) override {
 		
 	}
 

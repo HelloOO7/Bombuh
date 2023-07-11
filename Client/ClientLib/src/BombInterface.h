@@ -65,6 +65,11 @@ namespace bprotocol {
 
     };
 
+    struct ClockResponse : BombClient::TResponse {
+        bombclock_t m_Clock;
+        float m_Timescale;
+    };
+
     template<typename T>
     struct SimpleRequest : BombClient::TRequest<T> {
     };
@@ -72,8 +77,11 @@ namespace bprotocol {
 
 struct BombState {
     bombclock_t Clock;
+    float       Timescale;
+    unsigned long ClockSyncTime;
     uint8_t     Strikes;
-    uint8_t     DefusedModules;
+
+    BombState();
 
     inline int GetSeconds() {
         return (Clock / 1000) % 60;
@@ -98,6 +106,8 @@ private:
     BombState       m_State;
 
 public:
+    static constexpr int TIMER_DIGIT_COUNT = 4;
+
     BombInterface(BombClient* client, bconf::SyncFlag syncFlags = bconf::SYNC_NOTHING);
 
     void OnEvent(uint8_t eventId, void* eventData);
@@ -105,8 +115,11 @@ public:
     bool IsAllSyncDone();
 
     void SyncGameClock();
+    bombclock_t GetBombTime();
+    void GetTimerDigits(uint8_t* dest);
 
     void SyncStrikes();
+    int GetStrikes();
 
     void LoadBombConfig(BombComponent* module);
     void LoadComponentConfig(BombComponent* module);

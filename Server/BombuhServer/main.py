@@ -16,6 +16,8 @@ from mod_timer import TimerModule
 
 print("BombuhServer")
 
+atexit_handlers: list = []
+
 def main():
     print("Initializing access point...")
     ap = wlan.create_ap('Bombuh', 'Julka1234')
@@ -23,6 +25,12 @@ def main():
 
     srv = Server()
     bomb = Bomb(srv)
+
+    def bomb_atexit():
+        bomb.req_exit = True
+
+    atexit_handlers.append(bomb_atexit)
+
     timer = TimerModule(bomb)
     bomb.add_virtual_device(timer.create_socket())
     bomb.add_virtual_device(SfxModule(bomb).create_socket())
@@ -44,9 +52,12 @@ def main():
     web.start_thread(bomb)
 
     def timer_thread():
-        if (bomb.req_exit):
-            return
-        timer.ext_update_timer()
+        while True:
+            if (bomb.req_exit):
+                print("Timer thread has ended")
+                return
+            timer.ext_update_timer()
+            time.sleep(0.01)
 
     _thread.stack_size(1024)
     _thread.start_new_thread(timer_thread, ())
@@ -62,12 +73,13 @@ def main():
         if last_web_sync is None or time.ticks_diff(ts, last_web_sync) > WEB_SYNC_INTERVAL or bomb.is_force_status_report():
             web.report_game_status()
             last_web_sync = ts
-
-        timer.ext_update_timer()
         
         time.sleep(0.05)
 
 def atexit():
+    global atexit_handlers
+    for hnd in atexit_handlers:
+        hnd()
     web.shutdown()
     gc.collect() #important! clean up after web server
     

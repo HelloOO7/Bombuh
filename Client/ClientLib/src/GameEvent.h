@@ -39,7 +39,7 @@ namespace game {
         Event(F func, D* data) : m_Data{static_cast<void*>(data)}, m_Next{nullptr} {
             bool(*_func)(Event*, C*, D*) = static_cast<bool(*)(Event*, C*, D*)>(func);
             m_Func = (EventFunc) _func;
-            m_FreeData = false;
+            m_FreeData = true;
         }
 
         template<typename F>
@@ -50,13 +50,13 @@ namespace game {
         }
 
         ~Event() {
-            if (m_FreeData) {
+            if (m_FreeData && m_Data) {
                 free(m_Data);
             }
         }
 
-        Event* SetDataTransient() {
-            m_FreeData = true;
+        Event* SetDataPermanent() {
+            m_FreeData = false;
             return this;
         }
     
@@ -64,12 +64,12 @@ namespace game {
             Event* oldnext = m_Next;
             m_Next = nextEvent;
             nextEvent->m_Chain = m_Chain;
+            Event* end = nextEvent;
+            while (end->m_Next) {
+                end = end->m_Next;
+                end->m_Chain = m_Chain;
+            }
             if (oldnext) {
-                Event* end = nextEvent;
-                while (end->m_Next) {
-                    end = end->m_Next;
-                    end->m_Chain = m_Chain;
-                }
                 end->m_Next = oldnext;
             }
             return nextEvent;
@@ -85,13 +85,13 @@ namespace game {
         unsigned long* data = new unsigned long[2];
         data[0] = 0;
         data[1] = ms;
-        return (new Event<C>(function(Event<C>* e, C* context, unsigned long* data) {
+        return new Event<C>(function(Event<C>* e, C* context, unsigned long* data) {
             unsigned long time = millis();
             if (!data[0]) {
                 data[0] = time + data[1];
             }
             return time >= data[0];
-        }, data))->SetDataTransient();
+        }, data);
     }
 
     template<typename C>
@@ -99,10 +99,18 @@ namespace game {
         friend class EventManager<C>;
         friend class EventChain<C>;
     private:
+        EventManager<C>* m_Mgr;
         EventChain<C>* m_Chain;
         bool           m_Active;
 
-        EventChainHandle(EventChain<C>* chain) {
+    public:
+        EventChainHandle() {
+            m_Active = false;
+        }
+
+    private:
+        void SetChain(EventManager<C>* mgr, EventChain<C>* chain) {
+            m_Mgr = mgr;
             m_Chain = chain;
             m_Active = true;
         }
@@ -110,7 +118,7 @@ namespace game {
     public:
         void Cancel() {
             if (m_Active) {
-                m_Chain->Cancel();
+                m_Mgr->Cancel(this);
             }
         }
     };
@@ -128,18 +136,37 @@ namespace game {
 
         void Start(Event<C>* event, EventChainHandle<C>* handle = nullptr) {
             if (event) {
-                EventChain<C>* chain = new EventChain<C> {event, m_Events, nullptr, handle};
+                EventChain<C>* chain = new EventChain<C> {event, nullptr, m_Events, handle};
                 while (event) {
-                    event->m_Chain = m_Events;
+                    event->m_Chain = chain;
                     event = event->m_Next;
                 }
-                m_Events->m_Next = chain;
+                m_Events->m_Prev = chain;
                 m_Events = chain;
                 if (handle) {
-                    *handle = EventChainHandle<C>(chain);
+                    handle->SetChain(this, chain);
                     chain->m_Handle = handle;
                 }
             }
+        }
+    private:
+        void UnlinkChain(EventChain<C>* chn) {
+            if (chn->m_Prev) {
+                chn->m_Prev->m_Next = chn->m_Next;
+            }
+            else {
+                m_Events = chn->m_Next;
+            }
+            if (chn->m_Next) {
+                chn->m_Next->m_Prev = chn->m_Prev;
+            }
+            delete chn;
+        }
+
+    public:
+        void Cancel(EventChainHandle<C>* handle) {
+            handle->m_Chain->Cancel();
+            UnlinkChain(handle->m_Chain);
         }
 
         void CancelAll() {
@@ -175,16 +202,7 @@ namespace game {
                 }
                 EventChain<C>* next = chn->m_Next;
                 if (endChain) {
-                    if (chn->m_Prev) {
-                        chn->m_Prev->m_Next = chn->m_Next;
-                    }
-                    else {
-                        m_Events = chn->m_Next;
-                    }
-                    if (chn->m_Next) {
-                        chn->m_Next->m_Prev = chn->m_Prev;
-                    }
-                    delete chn;
+                    UnlinkChain(chn);
                 }
                 else {
                     running |= true;

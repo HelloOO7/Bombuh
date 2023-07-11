@@ -36,6 +36,10 @@ def apiGetState(client, response: MicroWebSrv._response):
 def apiGetGameState(client, response: MicroWebSrv._response):
 	response.WriteResponseJSONOk({'timer': wwwBomb.timer_int(), 'strikes': wwwBomb.strikes})
 
+@MicroWebSrv.route('/api/bomb-info', 'GET')
+def apiGetBombInfo(client, response: MicroWebSrv._response):
+	response.WriteResponseJSONOk({'serial': wwwBomb.serial_number})
+
 @MicroWebSrv.route('/api/summary', 'GET')
 def apiGetSummary(client, response: MicroWebSrv._response):
 	dct = {'exploded': wwwBomb.has_exploded(), 'time_remaining': wwwBomb.timer_int()}

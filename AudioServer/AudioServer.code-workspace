@@ -1,0 +1,29 @@
+{
+	"folders": [
+		{
+			"path": "../../../../../../dev/Bombuh/AudioServer"
+		},
+		{
+			"name": "AudioServer",
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.associations": {
+			"cstring": "cpp",
+			"new": "cpp",
+			"array": "cpp",
+			"deque": "cpp",
+			"string": "cpp",
+			"unordered_map": "cpp",
+			"unordered_set": "cpp",
+			"vector": "cpp",
+			"string_view": "cpp",
+			"initializer_list": "cpp",
+			"*.tcc": "cpp",
+			"memory": "cpp",
+			"random": "cpp",
+			"fstream": "cpp"
+		}
+	}
+}

@@ -1,4 +1,5 @@
 from io import BytesIO
+import struct
 
 def to_u16(bytes):
     return (bytes[0] & 0xFF) | ((bytes[1] & 0xFF) << 8)
@@ -11,6 +12,9 @@ def from_u16(val: int) -> bytes:
 
 def from_u32(val: int) -> bytes:
     return bytes([val & 0xFF, (val >> 8) & 0xFF, (val >> 16) & 0xFF, (val >> 24) & 0xFF])
+
+def from_f32(val: float) -> bytes:
+    return struct.pack('<f', val)
 
 class DataInput:
     io: BytesIO

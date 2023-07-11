@@ -26,7 +26,7 @@ public:
 
     static ComponentMain* GetInstance();
 
-    void Setup(BombComponent* module);
+    void Setup(BombComponent* module, bool disableSerial = false);
 
     void Loop();
 

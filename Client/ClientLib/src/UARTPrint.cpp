@@ -21,6 +21,7 @@ int uart_putchar(char c, FILE *stream)
 
 void print_init(unsigned long baud)
 {
+    #ifndef DISABLE_SERIAL_PRINT
     Serial.begin(baud);
 
     // fill in the UART file descriptor with pointer to writer.
@@ -28,4 +29,5 @@ void print_init(unsigned long baud)
 
     // The uart is the standard output device STDOUT.
     stdout = &uartout;
+    #endif
 }

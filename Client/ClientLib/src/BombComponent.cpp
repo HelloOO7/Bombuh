@@ -21,12 +21,16 @@ void BombComponent::Init(BombInterface* bomb) {
     }
 }
 
-void BombComponent::Configure(BombConfig* config) {
+void BombComponent::LoadConfiguration(BombConfig* config) {
 
 }
 
-void BombComponent::Configure(void* config) {
+void BombComponent::LoadConfiguration(void* config) {
 
+}
+
+void BombComponent::Configure() {
+    
 }
 
 void BombComponent::ClearConfiguredFlags() {
@@ -97,8 +101,8 @@ void BombModule::GetInfo(void** pData, size_t* pSize) {
     bld.Build(pData, pSize);
 }
 
-void BombModule::Configure(void* config) {
-    ConfigureModule(ModuleConfig::FromBuffer(config));
+void BombModule::LoadConfiguration(void* config) {
+    LoadConfiguration(ModuleConfig::FromBuffer(config));
 }
 
 BombConfig::ModuleFlag DefusableModule::GetModuleFlags() {
@@ -149,8 +153,8 @@ void DefusableModule::ActiveUpdate() {
 
 }
 
-void BombPort::Configure(void* config) {
-    ConfigurePort(static_cast<PortConfig*>(config));
+void BombPort::LoadConfiguration(void* config) {
+    LoadConfiguration(static_cast<PortConfig*>(config));
 }
 
 void BombPort::GetInfo(void** pData, size_t* pSize) {
@@ -160,8 +164,8 @@ void BombPort::GetInfo(void** pData, size_t* pSize) {
     bld.Build(pData, pSize);
 }
 
-void BombLabel::Configure(void* config) {
-    ConfigureLabel(static_cast<LabelConfig*>(config));
+void BombLabel::LoadConfiguration(void* config) {
+    LoadConfiguration(static_cast<LabelConfig*>(config));
 }
 
 void BombLabel::GetInfo(void** pData, size_t* pSize) {
@@ -171,8 +175,8 @@ void BombLabel::GetInfo(void** pData, size_t* pSize) {
     bld.Build(pData, pSize);
 }
 
-void BombBattery::Configure(void* config) {
-    ConfigureBattery(static_cast<BatteryConfig*>(config));
+void BombBattery::LoadConfiguration(void* config) {
+    LoadConfiguration(static_cast<BatteryConfig*>(config));
 }
 
 void BombBattery::GetInfo(void** pData, size_t* pSize) {
