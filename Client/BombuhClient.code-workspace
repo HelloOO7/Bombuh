@@ -30,10 +30,6 @@
 		{
 			"name": "SimonModule",
 			"path": "../Modules/SimonModule"
-		},
-		{
-			"name": "Mp3Test",
-			"path": "../../../Users/Čeněk/Documents/PlatformIO/Projects/Mp3Test"
 		}
 	],
 	"settings": {

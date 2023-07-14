@@ -1,9 +1,6 @@
 {
 	"folders": [
 		{
-			"path": "../../../../../../dev/Bombuh/AudioServer"
-		},
-		{
 			"name": "AudioServer",
 			"path": "."
 		}
@@ -23,7 +20,16 @@
 			"*.tcc": "cpp",
 			"memory": "cpp",
 			"random": "cpp",
-			"fstream": "cpp"
+			"fstream": "cpp",
+			"bitset": "cpp",
+			"functional": "cpp",
+			"istream": "cpp",
+			"limits": "cpp",
+			"ostream": "cpp",
+			"sstream": "cpp",
+			"streambuf": "cpp",
+			"regex": "cpp",
+			"tuple": "cpp"
 		}
 	}
 }

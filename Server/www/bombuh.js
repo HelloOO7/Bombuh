@@ -199,16 +199,16 @@
                                         case VarType.LONG:
                                         case VarType.INT:
                                             input.type = 'number';
+                                            if (variable.value) input.value = variable.value;
                                             break;
                                         case VarType.STR:
                                             input.type = 'text';
+                                            input.value = variable.value;
                                             break;
                                         case VarType.BOOL:
                                             input.type = 'checkbox';
+                                            input.checked = variable.value;
                                             break;
-                                    }
-                                    if (variable.value) {
-                                        input.value = variable.value;
                                     }
 
                                     let label = document.createElement('label');
@@ -378,6 +378,8 @@
 
         function setStrikes(nr) {
             strikes = nr;
+            timescale_table = [1.0, 1.25, 1.5, 3.0, 6.0];
+            timescale = timescale_table[Math.min(nr, timescale_table.length - 1)];
             strikesEl.textContent = 'X'.repeat(nr);
         }
 

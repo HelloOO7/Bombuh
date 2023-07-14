@@ -91,7 +91,7 @@ def apiConfigure(client: MicroWebSrv._client, response: MicroWebSrv._response):
 		devcfg = ComponentConfig(comp.id())
 		for compvar in comp.variables:
 			fname = 'module.' + str(comp.id()) + '.' + compvar.name
-			if not form.get(fname):
+			if form.get(fname) is None:
 				bad_fields.append(fname)
 			else:
 				devcfg.variables[compvar.name] = form[fname]
@@ -126,6 +126,22 @@ def apiStopGame(client, response: MicroWebSrv._response):
 	wwwBomb.reset()
 	response.WriteResponseOk()
 
+@MicroWebSrv.route('/pair', 'POST')
+def webPair(client: MicroWebSrv._client, response: MicroWebSrv._response):
+	print("Device", client.GetIPAddr(), "requested pairing.")
+	cnt = client.ReadRequestContent()
+	data:dict = json.loads(cnt)
+	print("Data", cnt)
+	if (data.get('device_capabilities') and data.get('network_address')):
+		addr = data['network_address']
+		for cap in data['device_capabilities']:
+			print("Pairing service", cap)
+			wwwBomb.add_service(cap, addr)
+		response.WriteResponseJSONOk()
+	else:
+		response.WriteResponseJSONError(400)
+	print("Pair done.")
+
 def _recvTextCallback(webSocket, msg):
 	pass
 
@@ -133,13 +149,17 @@ def _recvBinaryCallback(webSocket, data):
 	pass
 
 def _closedCallback(webSocket):
-	gameMonitor.on_closed(webSocket)
+	global gameMonitor
+	if (gameMonitor):
+		gameMonitor.on_closed(webSocket)
 
 def _acceptWebSocketCallback(webSocket, httpClient):
-	gameMonitor.open_socket(webSocket)
-	webSocket.RecvTextCallback   = _recvTextCallback
-	webSocket.RecvBinaryCallback = _recvBinaryCallback
-	webSocket.ClosedCallback     = _closedCallback
+	global gameMonitor
+	if (gameMonitor):
+		gameMonitor.open_socket(webSocket)
+		webSocket.RecvTextCallback   = _recvTextCallback
+		webSocket.RecvBinaryCallback = _recvBinaryCallback
+		webSocket.ClosedCallback     = _closedCallback
 
 def report_game_status():
 	global gameMonitor, wwwBomb
@@ -154,9 +174,8 @@ def start_thread(bomb: Bomb):
 	mws.AcceptWebSocketCallback = _acceptWebSocketCallback
 	mwsServer = mws
 	gameMonitor = WsGameMonitor()
-	_thread.stack_size(16384)
+	_thread.stack_size(12288)
 	mws.Start(threaded=True)
-	_thread.stack_size(4096)
 
 def shutdown():
 	global mwsServer, wwwBomb, gameMonitor

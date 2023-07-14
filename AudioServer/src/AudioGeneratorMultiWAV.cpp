@@ -22,6 +22,7 @@
 #include "AudioGeneratorMultiWAV.h"
 
 AudioGeneratorMultiWAV::FileHandle::FileHandle(AudioFileSource* source){
+  prev = nullptr;
   src = source;
 }
 
@@ -34,6 +35,7 @@ AudioGeneratorMultiWAV::AudioGeneratorMultiWAV()
   buff = NULL;
   buffPtr = 0;
   buffLen = 0;
+  fileList = nullptr;
 }
 
 AudioGeneratorMultiWAV::~AudioGeneratorMultiWAV()
@@ -47,25 +49,47 @@ AudioGeneratorMultiWAV::FileHandle* AudioGeneratorMultiWAV::prepareFile(AudioFil
   file = f;
   ReadWAVInfo();
   FileHandle* h = new FileHandle(f);
+  h->prev = fileList;
+  fileList = h;
   h->dataStart = f->getPos();
   h->dataLength = availBytes;
   file = oldfile;
   return h;
 }
 
-void AudioGeneratorMultiWAV::setNextFileCallback(FileHandle*(*callback)()) {
+void AudioGeneratorMultiWAV::setNextFileCallback(FileHandle*(*callback)(AudioGeneratorMultiWAV*)) {
   nextFileCallback = callback;
+}
+
+void AudioGeneratorMultiWAV::forceChangeTrack(FileHandle* h) {
+  file = h->src;
+  availBytes = h->dataLength;
+  fileSampleDataPos = h->dataStart;
+  file->seek(fileSampleDataPos, SEEK_SET);
+}
+
+void AudioGeneratorMultiWAV::setUserData(void* data) {
+  userData = data;
+}
+
+void* AudioGeneratorMultiWAV::getUserData() {
+  return userData;
 }
 
 bool AudioGeneratorMultiWAV::stop()
 {
-  Serial.println("Stopped.");
   if (!running) return true;
   running = false;
   free(buff);
   buff = NULL;
   output->stop();
-  return file->close();
+  FileHandle* f = fileList;
+  while (f) {
+    FileHandle* p = f->prev;
+    delete f;
+    f = p;
+  }
+  return true;
 }
 
 bool AudioGeneratorMultiWAV::isRunning()
@@ -74,10 +98,13 @@ bool AudioGeneratorMultiWAV::isRunning()
 }
 
 void AudioGeneratorMultiWAV::NextFile() {
-  FileHandle* h = nextFileCallback();
-  file = h->src;
-  availBytes = h->dataLength;
-  fileSampleDataPos = h->dataStart;
+  FileHandle* h = nextFileCallback(this);
+  if (!h) {
+    file = nullptr;
+  }
+  else {
+    forceChangeTrack(h);
+  }
 }
 
 // Handle buffered reading, reload each time we run out of data
@@ -92,8 +119,10 @@ bool AudioGeneratorMultiWAV::GetBufferedData(int bytes, void *dest)
       uint32_t toRead = availBytes > buffSize ? buffSize : availBytes;
       buffLen = file->read( buff, toRead );
       if (!buffLen) {
-        file->seek( fileSampleDataPos, SEEK_SET ); //reset file to beginning
         NextFile();
+        if (!file) {
+          return false;
+        }
         toRead = availBytes > buffSize ? buffSize : availBytes;
         buffLen = file->read( buff, toRead );
       }
@@ -137,8 +166,12 @@ bool AudioGeneratorMultiWAV::loop()
   } while (running && output->ConsumeSample(lastSample));
 
 done:
-  file->loop();
-  output->loop();
+  if (file) {
+    file->loop();
+  }
+  if (output) {
+    output->loop();
+  }
 
   return running;
 }
@@ -292,6 +325,9 @@ bool AudioGeneratorMultiWAV::ReadWAVInfo()
   availBytes = u32;
 
   // Now set up the buffer or fail
+  if (buff) {
+    free(buff);
+  }
   buff = reinterpret_cast<uint8_t *>(malloc(buffSize));
   if (!buff) {
     Serial.printf_P(PSTR("AudioGeneratorMultiWAV::ReadWAVInfo: cannot read WAV, failed to set up buffer \n"));
@@ -306,6 +342,10 @@ bool AudioGeneratorMultiWAV::ReadWAVInfo()
 bool AudioGeneratorMultiWAV::begin(AudioFileSource* source /*unused*/, AudioOutput *output)
 {
   NextFile();
+  if (!file) {
+    Serial.printf_P(PSTR("AudioGeneratorMultiWAV::begin: no input files\n"));
+    return false;
+  }
   if (!output) {
     Serial.printf_P(PSTR("AudioGeneratorMultiWAV::begin: invalid output\n"));
     return false;
@@ -317,7 +357,7 @@ bool AudioGeneratorMultiWAV::begin(AudioFileSource* source /*unused*/, AudioOutp
   } // Error
 
   if (!output->SetRate( sampleRate )) {
-    Serial.printf_P(PSTR("AudioGeneratorMultiWAV::begin: failed to SetRate in output\n"));
+    Serial.printf_P(PSTR("AudioGeneratorMultiWAV::begin: failed to SetRate %d in output\n"), sampleRate);
     return false;
   }
   if (!output->SetBitsPerSample( bitsPerSample )) {

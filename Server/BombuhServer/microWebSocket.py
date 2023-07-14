@@ -8,6 +8,7 @@ from   binascii    import b2a_base64
 from   struct      import pack
 from   _thread     import start_new_thread, allocate_lock
 import gc
+import _thread
 
 class MicroWebSocket :
 
@@ -88,6 +89,7 @@ class MicroWebSocket :
                 self._msgType = None
                 self._msgLen  = 0
                 if threaded :
+                    _thread.stack_size(4096)
                     if MicroWebSocket._tryStartThread(self._wsProcess, (acceptCallback, )) :
                         return
                 else :
@@ -135,6 +137,7 @@ class MicroWebSocket :
                 self.ClosedCallback(self)
             except Exception as ex :
                 print("MicroWebSocket : Error on closed callback (%s)." % str(ex))
+        print("WS thread has ended")
 
     # ----------------------------------------------------------------------------
 

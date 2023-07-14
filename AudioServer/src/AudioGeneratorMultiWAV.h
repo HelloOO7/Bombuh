@@ -32,10 +32,11 @@ class AudioGeneratorMultiWAV : public AudioGenerator
       AudioFileSource* src;
       uint32_t dataStart;
       uint32_t dataLength;
+      FileHandle* prev;
     public:
       FileHandle(AudioFileSource* source);
       ~FileHandle() {
-        delete src;
+        src->close();
       }
     };
 
@@ -47,8 +48,12 @@ class AudioGeneratorMultiWAV : public AudioGenerator
     virtual bool isRunning() override;
     void begin(AudioOutput* output) { begin(nullptr, output); };
     FileHandle* prepareFile(AudioFileSource* file);
-    void setNextFileCallback(FileHandle*(*callback)());
+    void setNextFileCallback(FileHandle*(*callback)(AudioGeneratorMultiWAV*));
+    void forceChangeTrack(FileHandle* track);
     void SetBufferSize(int sz) { buffSize = sz; }
+
+    void setUserData(void* data);
+    void* getUserData();
 
   private:
     bool ReadU32(uint32_t *dest) { return file->read(reinterpret_cast<uint8_t*>(dest), 4); }
@@ -75,7 +80,11 @@ class AudioGeneratorMultiWAV : public AudioGenerator
 
     uint32_t fileSampleDataPos;
 
-    FileHandle*(* nextFileCallback)();
+    FileHandle*(* nextFileCallback)(AudioGeneratorMultiWAV*);
+
+    FileHandle* fileList;
+
+    void* userData;
 };
 
 #endif

@@ -1,11 +1,10 @@
-import mod_virtual
-from bomb import Bomb, BombEvent
+from bomb import Bomb, BombEvent, VirtualModule
 from machine import Pin
 import tm1637
 import time
 import _thread
 
-class TimerModule(mod_virtual.VirtualModule):
+class TimerModule(VirtualModule):
     led_pins: list[Pin]
     disp: tm1637.TM1637
     mutex: _thread.LockType

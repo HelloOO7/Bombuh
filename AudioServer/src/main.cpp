@@ -4,23 +4,412 @@
 #include "AudioGeneratorWAV.h"
 #include "AudioOutputI2S.h"
 #include "AudioGeneratorMultiWAV.h"
+#include "AudioOutputMixer.h"
+#include "ESPAsyncWebServer.h"
 #include "FS.h"
+#include <vector>
+#include <string>
+#include <functional>
+#include <algorithm>
+#include "WiFi.h"
+#include "HTTPClient.h"
+#include "ArduinoJson.h"
+#include <mutex>
+
+class AudioOutputMixerFix : public AudioOutputMixer {
+public:
+	bool m_LoopRequested;
+
+	AudioOutputMixerFix(int samples, AudioOutput *sink) : AudioOutputMixer(samples, sink), m_LoopRequested{false} {
+
+	}
+
+	bool loop() override {
+		if (m_LoopRequested) {
+			m_LoopRequested = false;
+			return AudioOutputMixer::loop();
+		}
+		return false;
+	}
+};
+
+struct SoundList {
+	std::vector<std::string> m_Paths;
+};
+
+class MusicController {
+public:
+	virtual ~MusicController() {
+
+	}
+
+	virtual void Start(AudioOutputMixer* output) = 0;
+	virtual bool Loop() = 0;
+};
+
+class SingleMusicController : public MusicController {
+private:
+	AudioFileSourceSD m_Source;
+	AudioGeneratorWAV m_Generator;
+	AudioOutputMixerStub* m_Out;
+
+public:
+	SingleMusicController(const char* path) : m_Source(path) {
+		m_Out = nullptr;
+	}
+
+	~SingleMusicController() {
+		delete m_Out;
+		m_Generator.stop();
+	}
+
+	void Start(AudioOutputMixer* output) override {
+		m_Out = output->NewInput();
+		m_Generator.begin(&m_Source, m_Out);
+	}
+
+	bool Loop() override {
+		bool retval = m_Generator.loop();
+		if (!retval && m_Out) {
+			delete m_Out;
+			m_Out = nullptr;
+		}
+		return retval;
+	}
+};
+
+class LoopingMusicController : public MusicController {
+private:
+	AudioGeneratorMultiWAV m_Generator;
+
+	AudioOutputMixerStub* m_Out;
+
+	AudioFileSourceSD* m_IntroFile;
+	AudioFileSourceSD* m_LoopFile;
+	AudioGeneratorMultiWAV::FileHandle* m_IntroHandle;
+	AudioGeneratorMultiWAV::FileHandle* m_LoopHandle;
+
+	bool m_IsLoopStarted{false};
+
+public:
+	LoopingMusicController(const char* introPath, const char* loopPath) {
+		if (introPath) {
+			m_IntroHandle = m_Generator.prepareFile(m_IntroFile = new AudioFileSourceSD(introPath));
+		}
+		else {
+			m_IntroFile = nullptr;
+			m_IntroHandle = nullptr;
+			m_IsLoopStarted = true;
+		}
+		m_LoopHandle = m_Generator.prepareFile(m_LoopFile = new AudioFileSourceSD(loopPath));
+		m_Generator.setUserData(this);
+		m_Generator.setNextFileCallback([](AudioGeneratorMultiWAV* ag) {
+			LoopingMusicController* ctl = static_cast<LoopingMusicController*>(ag->getUserData());
+			if (ctl->m_IsLoopStarted) {
+				return ctl->m_LoopHandle;
+			}
+			else {
+				ctl->m_IsLoopStarted = true;
+				return ctl->m_IntroHandle;
+			}
+		});
+		m_Out = nullptr;
+	}
+
+	LoopingMusicController(const char* loopPath) : LoopingMusicController(nullptr, loopPath) {
+
+	}
+
+	~LoopingMusicController() {
+		m_Generator.stop();
+		delete m_IntroFile;
+		delete m_LoopFile;
+		delete m_Out;
+	}
+
+	void Start(AudioOutputMixer* output) override {
+		m_Out = output->NewInput();
+		m_Generator.begin(m_Out);
+	}
+
+	bool Loop() override {
+		return m_Generator.loop();
+	}
+};
+
+class DynamicMusicController : public MusicController {
+private:
+	AudioGeneratorMultiWAV m_Generator;
+
+	AudioOutputMixerStub* m_Out;
+
+	std::vector<AudioFileSourceSD*> m_Files;
+	std::vector<AudioGeneratorMultiWAV::FileHandle*> m_FileHandles;
+	
+	int m_TrackIndex{0};
+
+	std::function<int()> m_NextTrackFunc;
+
+public:
+	DynamicMusicController(SoundList* tracks) {
+		m_Files.reserve(tracks->m_Paths.size());
+		m_FileHandles.reserve(tracks->m_Paths.size());
+		m_Generator.SetBufferSize(4096);
+		for (const auto& track : tracks->m_Paths) {
+			AudioFileSourceSD* src = new AudioFileSourceSD(track.c_str());
+			m_Files.push_back(src);
+			m_FileHandles.push_back(m_Generator.prepareFile(src));
+		}
+		m_Generator.setUserData(this);
+		m_Generator.setNextFileCallback([](AudioGeneratorMultiWAV* ag) {
+			DynamicMusicController* ctl = static_cast<DynamicMusicController*>(ag->getUserData());
+			if (!ctl->GetTrackCount()) {
+				return (AudioGeneratorMultiWAV::FileHandle*)nullptr;
+			}
+			if (ctl->m_NextTrackFunc) {
+				ctl->SetTrackIndex(ctl->m_NextTrackFunc());
+			}
+			return ctl->m_FileHandles[ctl->m_TrackIndex];
+		});
+		m_Out = nullptr;
+	}
+
+	~DynamicMusicController() {
+		m_Generator.stop();
+		for (const auto& file : m_Files) {
+			delete file;
+		}
+		delete m_Out;
+	}
+
+	void ForcePlayTrack(int index) {
+		m_Generator.forceChangeTrack(m_FileHandles[index]);
+	}
+
+	void SetNextTrackFunc(std::function<int()> func) {
+		m_NextTrackFunc = func;
+	}
+
+	void SetTrackIndex(int index) {
+		m_TrackIndex = index;
+	}
+
+	int GetTrackCount() {
+		return m_Files.size();
+	}
+
+	void Start(AudioOutputMixer* output) override {
+		m_Out = output->NewInput();
+		m_Generator.begin(m_Out);
+	}
+
+	bool Loop() override {
+		return m_Generator.loop();
+	}
+};
+
+class MusicPlayer {
+public:
+	bool m_ReqStop;
+
+	MusicPlayer() {
+		m_ReqStop = false;
+	}
+
+	virtual ~MusicPlayer() {
+		
+	}
+
+	virtual void Update() {
+
+	}
+
+	virtual bool Loop() = 0;
+
+	virtual void Start(AudioOutputMixer* out) = 0;
+
+	void Stop() {
+		m_ReqStop = true;
+	}
+};
+
+class SimpleMusicPlayer : public MusicPlayer {
+private:
+	MusicController* m_Controller;
+
+public:
+	SimpleMusicPlayer(const char* path, bool isLooping = false) {
+		if (isLooping) {
+			m_Controller = new LoopingMusicController(path);
+		}
+		else {
+			m_Controller = new SingleMusicController(path);
+		}
+	}
+
+	SimpleMusicPlayer(const char* introPath, const char* loopPath) : m_Controller{new LoopingMusicController(introPath, loopPath)} {
+		
+	}
+
+	~SimpleMusicPlayer() {
+		delete m_Controller;
+	}
+
+	bool Loop() override {
+		return m_Controller->Loop();
+	}
+
+	void Start(AudioOutputMixer* out) override {
+		m_Controller->Start(out);
+	}
+};
+
+class GameplayMusicPlayer : public MusicPlayer {
+private:
+	DynamicMusicController m_Controller;
+	SingleMusicController*  m_StingerController;
+
+	uint32_t m_TimeLimit;
+
+	uint32_t m_LastTimerUpdate;
+	int32_t m_LastTimerValue;
+	float	m_Timescale;
+
+	bool m_IsStingerPlaying{false};
+	bool m_HasStarted{false};
+	int32_t m_StingerEnd{0};
+
+	AudioOutputMixer* m_Mixer;
+
+	int m_TrackIndex;
+	int32_t m_LastUpdate;
+
+public:
+	GameplayMusicPlayer(SoundList* soundList, const char* stingerPath = nullptr) : m_Controller(soundList) {
+		if (stingerPath) {
+			m_StingerController = new SingleMusicController(stingerPath);
+		}
+		else {
+			m_StingerController = nullptr;
+		}
+		m_TrackIndex = 0;
+		m_Controller.SetTrackIndex(0);
+		m_Controller.SetNextTrackFunc([this](){
+			if (this->m_IsStingerPlaying) {
+				return this->m_TrackIndex; //do not switch track while playing stinger
+			}
+			int index = this->GetNextTrackIndex();
+			int timer = GetTimerValue();
+			this->m_TrackIndex = index;
+			printf("Next track %d at timer %02d:%02d\n", index, timer / 60000, (timer % 60000) / 1000);
+			return index;
+		});
+	}
+
+	~GameplayMusicPlayer() {
+		delete m_StingerController;
+	}
+
+	void Start(AudioOutputMixer* out) override {
+		m_Mixer = out;
+		m_Controller.Start(out);
+	}
+
+	bool Loop() override {
+		bool res = m_Controller.Loop();
+		if (res && m_StingerController && m_IsStingerPlaying) {
+			if (!m_StingerController->Loop()) {
+				delete m_StingerController;
+				m_StingerController = nullptr;
+				m_IsStingerPlaying = false;
+			}
+		}
+		return res;
+	}
+
+	void Update() override {
+		m_LastUpdate = millis();
+		if (m_Controller.GetTrackCount() > 0) {
+			int32_t timer = GetTimerValue();
+			if (timer == 0) {
+				printf("Time ran out. Stopping.\n");
+				Stop();
+			}
+			else if (timer < (30 + 7.0f * m_Timescale) * 1000 && HasStinger() && !m_IsStingerPlaying) {
+				printf("Playing stinger.\n");
+				m_StingerController->Start(m_Mixer);
+				m_IsStingerPlaying = true;
+				m_StingerEnd = timer - (int32_t)(6.85f * m_Timescale * 1000);
+			}
+			int lastTrack = m_Controller.GetTrackCount() - 1;
+			if (m_StingerEnd && timer <= m_StingerEnd && m_TrackIndex != lastTrack) {
+				m_TrackIndex = lastTrack;
+				m_StingerEnd = 0;
+				m_Controller.ForcePlayTrack(lastTrack);
+			}
+		}
+	}
+
+	bool HasStinger() {
+		return !!m_StingerController;
+	}
+
+	void SetStartParams(uint32_t timeLimit, float timescale) {
+		m_TimeLimit = timeLimit;
+		m_Timescale = timescale;
+		UpdateTimer(timeLimit, timescale);
+	}
+
+	void UpdateTimer(int32_t timerValue, float timescale) {
+		m_LastTimerUpdate = millis();
+		m_LastTimerValue = timerValue;
+		m_Timescale = timescale;
+	}
+
+	int32_t GetTimerValue() {
+		int32_t val = m_LastTimerValue - (int32_t)((millis() - m_LastTimerUpdate) * m_Timescale);
+		if (val < 0) {
+			val = 0;
+		}
+		return val;
+	}
+
+	int32_t GetPhysicalTimerValue() {
+		return GetTimerValue() / m_Timescale;
+	}
+
+	int GetNextTrackIndex() {
+		if (!m_HasStarted) {
+			m_HasStarted = true;
+			return 0;
+		}
+		int32_t timer = GetPhysicalTimerValue();
+		if (timer < 30 * 1000) {
+			return m_Controller.GetTrackCount() - 1;
+		}
+		if (timer == m_TimeLimit) {
+			return 0;
+		}
+		int trackCount = m_Controller.GetTrackCount();
+		int value = (int)((float)trackCount - ((float)timer / (float)m_TimeLimit) * (float)(trackCount - 1));
+		if (value < 0) value = 0;
+		if (value > trackCount - 2) value = trackCount - 2;
+		return value;
+	}
+};
 
 void InitSDFS() {
 	SPI.begin(2, 10, 3, 7);
-	SD.begin(7, SPI, 4000000ul, "/sdmc", 16);
+	SD.begin(7, SPI, 16000000ul, "/sdmc", 16);
 }
 
-struct SoundList {
-	int Count;
-	const char** Paths;
-};
-
-int CountFilesInDir(File& dir) {
+int CountSubDirectories(File& dir) {
 	int count = 0;
 	File file;
 	while (file = dir.openNextFile()) {
-		count++;
+		if (file.isDirectory()) {
+			count++;
+		}
 		file.close();
 	}
 	dir.rewindDirectory();
@@ -30,16 +419,17 @@ int CountFilesInDir(File& dir) {
 void LoadSoundListFromFolder(SoundList* list, const char* path) {
 	auto dir = SD.open(path);
 
-	size_t count = CountFilesInDir(dir);	
-
-	list->Count = count;
-	list->Paths = new const char*[count];
-
 	int i = 0;
 	File file;
 	while (file = dir.openNextFile()) {
-		list->Paths[i++] = file.path();
+		list->m_Paths.push_back(std::string(file.path()));
 		file.close();
+	}
+
+	std::sort(list->m_Paths.begin(), list->m_Paths.end());
+
+	for (const auto& path : list->m_Paths) {
+		printf("Play path: %s\n", path.c_str());
 	}
 
 	dir.close();
@@ -48,7 +438,7 @@ void LoadSoundListFromFolder(SoundList* list, const char* path) {
 SoundList* RandomSoundList() {
 	File basedir = SD.open("/Gameplay");
 
-	int cnt = CountFilesInDir(basedir);
+	int cnt = CountSubDirectories(basedir);
 	int selected = random(cnt);
 
 	SoundList* ret = nullptr;
@@ -56,13 +446,16 @@ SoundList* RandomSoundList() {
 	int i = 0;
 	File file;
 	while (file = basedir.openNextFile()) {
-		const char* path = file.path();
-		file.close();
-		if (i == selected) {
-			ret = new SoundList();
-			LoadSoundListFromFolder(ret, path);
-			break;
+		if (file.isDirectory()) {
+			const char* path = file.path();
+			if (i++ == selected) {
+				ret = new SoundList();
+				LoadSoundListFromFolder(ret, path);
+				file.close();
+				break;
+			}
 		}
+		file.close();
 	}
 
 	basedir.close();
@@ -70,56 +463,189 @@ SoundList* RandomSoundList() {
 	return ret;
 }
 
-static constexpr const char* WAV_NAMES[] {
-	"/Gameplay/GameRoomA/GameRoomA_1.wav",
-	"/Gameplay/GameRoomA/GameRoomA_2.wav",
-	"/Gameplay/GameRoomA/GameRoomA_3.wav",
-	"/Gameplay/GameRoomA/GameRoomA_4.wav",
-	"/Gameplay/GameRoomA/GameRoomA_5.wav",
-	"/Gameplay/GameRoomA/GameRoomA_6.wav",
-	"/Gameplay/GameRoomA/GameRoomA_7.wav",
-	"/Gameplay/GameRoomA/GameRoomA_8.wav",
-};
+AudioOutputI2S* g_I2SSink;
+AudioOutputMixerFix* g_Mixer;
 
-AudioOutputI2S* out;
-AudioGeneratorMultiWAV::FileHandle* m_AudioHandles[8];
-int m_AudIndex = 0;
-AudioGeneratorMultiWAV* aud;
+GameplayMusicPlayer* gameplayMusic{nullptr};
 
-void LoadSounds() {
-	aud = new AudioGeneratorMultiWAV();
-	for (int i = 0; i < 8; i++) {
-		m_AudioHandles[i] = aud->prepareFile(new AudioFileSourceSD(WAV_NAMES[i]));
+MusicPlayer* m_Player{nullptr};
+
+AsyncWebServer g_Server(80);
+std::mutex g_PlayMutex;
+
+void StopPlayback() {
+	if (m_Player) {
+		auto p = m_Player;
+		m_Player = nullptr; //ensure m_Player is always invalid in case of context switch
+		delete p;
 	}
+}
+
+void StartPlayback(MusicPlayer* player) {
+	StopPlayback();
+	m_Player = player;
+	player->Start(g_Mixer);
+}
+
+void PlayGameplayMusic(int32_t initialTimer) {
+	StopPlayback(); //early call to free file handles
+	SoundList* sndlist = RandomSoundList();
+	gameplayMusic = new GameplayMusicPlayer(sndlist, "/Gameplay/Stinger.wav");
+	delete sndlist;
+	gameplayMusic->SetStartParams(initialTimer, 1.0f);
+	StartPlayback(gameplayMusic);
+}
+
+void PlayME(const char* name) {
+	StopPlayback(); //early call to free file handles
+	StartPlayback(new SimpleMusicPlayer(name));
+}
+
+void PlaySetupMusic() {
+	StopPlayback(); //early call to free file handles
+	static const char* const TRACKS[][2] {
+		{nullptr, "/Ambient/SetupRoom.wav"},
+		{"/Ambient/SetupRoomD_Intro.wav", "/Ambient/SetupRoomD_Loop.wav"},
+		{"/Ambient/SetupRoomE_Intro.wav", "/Ambient/SetupRoomE_Loop.wav"}
+	};
+	const char* const* info = TRACKS[random(sizeof(TRACKS) / sizeof(TRACKS[0]))];
+	StartPlayback(new SimpleMusicPlayer(info[0], info[1]));
+}
+
+void Pair() {
+	HTTPClient cl;
+	cl.begin(String("http://") + WiFi.gatewayIP().toString() + "/pair");
+	StaticJsonDocument<256> doc;
+	JsonArray caps = doc.createNestedArray("device_capabilities");
+	caps.add("AudioServer");
+	doc["network_address"] = WiFi.localIP().toString();
+	uint8_t output[256];
+	size_t dataSize = serializeJson(doc, output, sizeof(output));
+	cl.setTimeout(5000);
+	printf("%d\n", cl.POST(output, dataSize));
+	cl.getString();
+	cl.end();
+}
+
+void EnsureWireless() {
+	static bool wifiBegan = false;
+
+	if (WiFi.status() == WL_CONNECTED) {
+		return;
+	}
+	printf("Wifi status %d\n", WiFi.status());
+	if (!wifiBegan) {
+		wifiBegan = true;
+		printf("Begin WiFi connection...\n");
+		WiFi.begin("Bombuh", "Julka1234");
+	}
+	else {
+		printf("Reconnecting to WiFi...\n");
+		WiFi.reconnect();
+	}
+	while (WiFi.status() != WL_CONNECTED) {
+		delay(100);
+	}
+	printf("Connected to WiFi! IP: %s\n", WiFi.localIP().toString().c_str());
+	Pair();
+}
+
+void InitNetworkServer() {
+	g_Server.on("/stop", [](AsyncWebServerRequest* request) {
+		g_PlayMutex.lock();
+		if (m_Player) {
+			m_Player->m_ReqStop = true;
+		}
+		request->send(200);
+		g_PlayMutex.unlock();
+	});
+
+	g_Server.on("/start-gameplay", [](AsyncWebServerRequest* request) {
+		bool post = request->method() == HTTP_POST;
+		if (request->hasParam("time_limit", post)) {
+			g_PlayMutex.lock();
+			PlayGameplayMusic(request->getParam("time_limit", post)->value().toInt());
+			request->send(200);
+			g_PlayMutex.unlock();
+		}
+		else {
+			request->send(400);
+		}
+	});
+
+	g_Server.on("/update-gameplay", [](AsyncWebServerRequest* request) {
+		bool post = request->method() == HTTP_POST;
+		if (request->hasParam("timer", post) && request->hasParam("timescale", post)) {
+			g_PlayMutex.lock();
+			if (gameplayMusic) {
+				gameplayMusic->UpdateTimer(request->getParam("timer", post)->value().toInt(), request->getParam("timescale", post)->value().toFloat());
+				gameplayMusic->Update(); //call update before mutex is unlocked
+				request->send(200);
+			}
+			else {
+				request->send(510); //gameplay music not playing
+			}
+			g_PlayMutex.unlock();
+		}
+		else {
+			request->send(400);
+		}
+	});
+
+	g_Server.on("/play-victory", [](AsyncWebServerRequest* request) {
+		g_PlayMutex.lock();
+		PlayME("/ME/GameOver_Fanfare.wav");
+		request->send(200);
+		g_PlayMutex.unlock();
+	});
+
+	g_Server.on("/play-setup", [](AsyncWebServerRequest* request) {
+		g_PlayMutex.lock();
+		PlaySetupMusic();
+		request->send(200);
+		g_PlayMutex.unlock();
+	});
+
+	g_Server.begin();
 }
 
 void setup() {
 	Serial.begin(115200);
   	Serial.println("Hello ESP32C3!!");
+	delay(1000);
 	InitSDFS();
-	out = new AudioOutputI2S();
-	out->SetPinout(19, 18, 6);
-	LoadSounds();
-	aud->setNextFileCallback([]() {
-		AudioGeneratorMultiWAV::FileHandle* file = m_AudioHandles[m_AudIndex++];
-		if (m_AudIndex == 8) {
-			m_AudIndex = 7;
-		}
-		return file;
-	});
-	aud->begin(out);
-	Serial.println("Playback started.");
+	WiFi.mode(WIFI_STA);
+	EnsureWireless();
+	InitNetworkServer();
+	g_I2SSink = new AudioOutputI2S();
+	g_I2SSink->SetPinout(19, 18, 6);
 
-	SoundList* sndlist = RandomSoundList();
-	for (int i = 0; i < sndlist->Count; i++) {
-		Serial.println(sndlist->Paths[i]);
-	}
+	g_Mixer = new AudioOutputMixerFix(2048, g_I2SSink);
 }
 
-void loopMulti() {
-	aud->loop();
-}
+bool g_DoDelay = false;
 
 void loop() {
-	loopMulti();
+	g_PlayMutex.lock();
+	if (WiFi.status() != WL_CONNECTED) {
+		StopPlayback();
+		EnsureWireless();
+	}
+
+	if (m_Player) {
+		m_Player->Update();
+		if (m_Player->m_ReqStop || !m_Player->Loop()) {
+			StopPlayback();
+		}
+	}
+	else {
+		delay(10); //wait for webserver commands
+	}
+	g_Mixer->m_LoopRequested = true;
+	g_Mixer->loop();
+	g_PlayMutex.unlock();
+	if (g_DoDelay) {
+		delay(1); //spare some time for the web server
+	}
+	g_DoDelay = !g_DoDelay;
 }

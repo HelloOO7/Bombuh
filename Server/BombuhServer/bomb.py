@@ -67,6 +67,12 @@ class ComponentHandleBase:
     
     def build_config(self) -> bytes:
         return bytes()
+    
+    def get_var(self, name: str) -> object:
+        for v in self.variables:
+            if v.name == name:
+                return v.value
+        return None
 
 class ModuleFlag:
     NEEDY = (1 << 0)
@@ -191,10 +197,113 @@ class SerialFlag:
     LAST_DIGIT_EVEN = 2
     LAST_DIGIT_ODD = 4
 
+class VirtualModule:
+    name: str
+    bomb: 'Bomb'
+    event_bits: int
+
+    next_response: bytes
+
+    def __init__(self, bomb: 'Bomb', name, *events) -> None:
+        self.name = name
+        self.bomb = bomb
+        self.event_bits = 0
+        for e in events:
+            self.event_bits |= (1 << e)
+
+    def create_socket(self) -> ClientSocket:
+        return VirtualModuleSocket(self)
+
+    def handle_event(self, id: int, data):
+        pass
+
+    def list_variables(self) -> list[tuple[str, int]]:
+        return []
+
+    def comm_poll(self, data: bytes) -> bytes:
+        # no queries
+        return bytes([0])
+    
+    def comm_response(self, data: bytes) -> bytes:
+        # empty
+        return bytes()
+    
+    def comm_event(self, data: bytes) -> bytes:
+        self.handle_event(data[0], data[1:])
+        return bytes()
+    
+    def comm_handshake(self, data: bytes) -> bytes:
+        out: DataOutput = DataOutput()
+        out.write_u32(0x616C754A)
+        out.write_u32(self.event_bits)
+        out.write_u8(0) #type = module
+        out.write_str(self.name)
+        out.write_u8(ModuleFlag.DECORATIVE)
+        out.write_u16(0) # extra data size
+        vars = self.list_variables()
+        out.write_u8(len(vars))
+        for v in vars:
+            out.write_str(v[0])
+            out.write_u8(v[1])
+        return out.buffer()
+
+    def handle_packet(self, data: bytes):
+        type = data[0]
+        self.next_response = [
+            0,
+            self.comm_poll,
+            self.comm_response,
+            self.comm_event,
+            self.comm_handshake
+        ][type](data[1:])
+
+    def respond(self) -> bytes:
+        return self.next_response
+
+class VirtualModuleSocket(ClientSocket):
+    mod: VirtualModule
+    ident: int
+
+    def __init__(self, mod: VirtualModule) -> None:
+        super().__init__(None, None)
+        self.mod = mod
+        self.ident = random.randint(0, 256*256*256)
+
+    def send_packet(self, content: bytes) -> None:
+        self.lock_mutex()
+        self.mod.handle_packet(content)
+        self.release_mutex()
+
+    def read_packet(self) -> bytes:
+        self.lock_mutex()
+        response = self.mod.respond()
+        self.release_mutex()
+        return response
+    
+    def id(self) -> int:
+        return self.ident
+
+class BaseService:
+    address: str
+    bomb: 'Bomb'
+
+    def __init__(self, bomb: 'Bomb', address: str) -> None:
+        self.address = address
+        self.bomb = bomb
+
+    def register(self) -> None:
+        pass
+
+    def deregister(self) -> None:
+        pass
+
+    def update(self) -> None:
+        pass
+
 class Bomb:
     STRIKE_TO_TIMER_SCALE = [1.0, 1.25, 1.5, 3.0, 6.0]
     SERIAL_NUMBER_LENGTH = 6
-    SERIAL_NUMBER_CHARS = [ # Base on the logic in KTANE
+    SERIAL_NUMBER_CHARS = [ # Based on the logic in KTANE
         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
         'I', 'J', 'K', 'L', 'M', 'N', 'E', 'P',      #replace O with E as it could be confused with Q or 0 - but keep the vowel to consonant ratio
         'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Z', #remove Y as there could be arguments about whether it is a vowel
@@ -204,6 +313,10 @@ class Bomb:
     
     req_exit: bool
     state: str
+
+    service_dict: dict[str, object]
+    services: dict[str, BaseService]
+    device_mutex: Semaphore
 
     serial_number: str
     random_seed: int
@@ -237,6 +350,9 @@ class Bomb:
         self.srv = srv
         self.state = BombState.IDLE
         self.req_exit = False
+        self.service_dict = dict()
+        self.services = dict()
+        self.device_mutex = Semaphore()
         self.modules = []
         self.labels = []
         self.ports = []
@@ -314,6 +430,7 @@ class Bomb:
 
     def build_configs(self):
         self.bomb_cfg_data = Bomb.pack_buffer(self.build_bomb_config())
+        print(self.bomb_cfg_data.hex())
 
         for comp in self.all_components:
             comp.config_cache = Bomb.pack_buffer(comp.build_config())
@@ -328,7 +445,11 @@ class Bomb:
 
         out.write_u16(len(self.modules))
         modules_ptr = out.alloc_pointer()
-        out.write_u16(len(self.labels))
+        dmy_label_ct = 0
+        for mod in self.modules:
+            if (mod.name == '$DummyLabel'):
+                dmy_label_ct += 1
+        out.write_u16(len(self.labels) + dmy_label_ct)
         labels_ptr = out.alloc_pointer()
         out.write_u16(len(self.ports))
         ports_ptr = out.alloc_pointer()
@@ -353,6 +474,9 @@ class Bomb:
         labels_ptr.set_here()
         for lbl in self.labels:
             out.write_u32(Server.str_hash(lbl.used_option)).write_b8(lbl.is_lit)
+        for mod in self.modules:
+            if (mod.name == '$DummyLabel'):
+                out.write_u32(Server.str_hash(mod.get_var('Text'))).write_b8(mod.get_var('IsLit'))
 
         ports_ptr.set_here()
         for port in self.ports:
@@ -392,8 +516,39 @@ class Bomb:
         serial += str(random.randint(0, 9)) #ensure digit at the end
         return serial
     
+    def register_service(self, name: str, service: object) -> None:
+        self.service_dict[name] = service
+
+    def add_service(self, name: str, ip: str):
+        if name in self.service_dict:
+            svc = self.service_dict[name](self, ip)
+            if name in self.services:
+                self.get_service(name).deregister()
+            self.services[name] = svc
+            svc.register()
+        else:
+            print("Failed to bind service", name)
+
+    def get_service(self, name: str) -> BaseService:
+        return self.services[name]
+
     def add_virtual_device(self, socket: ClientSocket):
+        self.device_mutex.lock()
         self.srv.add_socket(socket, True)
+        self.srv.shake_hands_with(socket, self.handshake_callback)
+        self.device_mutex.release()
+
+    def remove_virtual_device(self, socket: ClientSocket):
+        self.device_mutex.lock()
+        self.srv.remove_device(socket)
+        for comp in self.all_components:
+            if comp.comm_device.issock(socket):
+                for l in [self.modules, self.labels, self.batteries, self.ports, self.all_components]:
+                    try:
+                        l.remove(comp)
+                    except ValueError:
+                        pass #object not in sequence
+        self.device_mutex.release()
 
     def device_ready(self, dev: int):
         print("Device ready:", dev)
@@ -414,12 +569,14 @@ class Bomb:
             print("Invalid handshake component type!")
 
     def discover_modules(self) -> None:
+        self.device_mutex.lock()
         for list in [self.modules, self.labels, self.batteries, self.ports, self.all_components, self.dev_to_component_dict]:
             list.clear()
             
         self.srv.discover()
         self.srv.shake_hands(self.handshake_callback)
         self.reset()
+        self.device_mutex.release()
 
     def configure(self, config: BombConfig) -> None:
         print("Begin configuration")
@@ -570,6 +727,9 @@ class Bomb:
         if (self.is_sync_online()):
             self.srv.sync()
 
+        for svc in self.services.values():
+            svc.update()
+
     def dispatchEvent(self, eventId: int, params = None):
         packet = self.srv.make_event_packet(eventId, params)
         for comp in self.all_components:
@@ -583,3 +743,9 @@ class Bomb:
     def exit(self) -> None:
         self.reset()
         self.req_exit = True
+
+    def emergency_exit(self) -> None:
+        self.req_exit = True
+        for svc in self.services.values():
+            svc.deregister()
+        self.services.clear()

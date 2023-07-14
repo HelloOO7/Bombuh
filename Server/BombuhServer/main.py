@@ -13,27 +13,37 @@ import web
 from bitcvtr import *
 from mod_sfx import SfxModule
 from mod_timer import TimerModule
+from mod_label_dummy import DummyLabelModule
+
+import svc_audioserver
 
 print("BombuhServer")
 
 atexit_handlers: list = []
 
 def main():
-    print("Initializing access point...")
-    ap = wlan.create_ap('Bombuh', 'Julka1234')
-    print(ap.ifconfig())
-
+    gc.collect()
     srv = Server()
     bomb = Bomb(srv)
 
+    bomb.register_service('AudioServer', svc_audioserver.AudioServerService)
+
     def bomb_atexit():
-        bomb.req_exit = True
+        bomb.emergency_exit()
 
     atexit_handlers.append(bomb_atexit)
+
+    web.start_thread(bomb)
+
+    print("Server started. Initializing access point...")
+    ap = wlan.create_ap('Bombuh', 'Julka1234')
+    print(ap.ifconfig())
 
     timer = TimerModule(bomb)
     bomb.add_virtual_device(timer.create_socket())
     bomb.add_virtual_device(SfxModule(bomb).create_socket())
+    bomb.add_virtual_device(DummyLabelModule(bomb).create_socket())
+    bomb.add_virtual_device(DummyLabelModule(bomb).create_socket())
     print("Discovering I2C devices...")
     bomb.discover_modules()
     print("Device scan done")
@@ -49,15 +59,13 @@ def main():
 
     srv.regist_handler('Test', TestReqHandler())
 
-    web.start_thread(bomb)
-
     def timer_thread():
         while True:
             if (bomb.req_exit):
                 print("Timer thread has ended")
                 return
             timer.ext_update_timer()
-            time.sleep(0.01)
+            time.sleep(0.04)
 
     _thread.stack_size(1024)
     _thread.start_new_thread(timer_thread, ())

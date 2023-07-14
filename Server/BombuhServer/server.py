@@ -23,6 +23,9 @@ class ClientSocket:
         self.i2c = i2c
         self.device = device
 
+    def id(self) -> int:
+        return self.device
+
     def lock_mutex(self):
         ClientSocket.global_i2c_mutex.lock()
 
@@ -113,7 +116,10 @@ class DeviceHandle:
         self.__socket__ = sock
 
     def unique_id(self) -> int:
-        return self.__socket__.device
+        return self.__socket__.id()
+    
+    def issock(self, sock: ClientSocket) -> bool:
+        return self.__socket__ is sock
 
 class RequestHandler:
     def decode(self, device: DeviceHandle, io: DataInput) -> object:
@@ -176,21 +182,35 @@ class Server:
         self.release_mutex()
 
     def add_socket(self, socket: ClientSocket, permanent: bool = False):
-        self.devices.append(socket)
-        if (permanent):
-            self.permanent_devices.append(socket)
+        if socket not in self.devices:
+            self.devices.append(socket)
+            if (permanent):
+                self.permanent_devices.append(socket)
+
+    def remove_device(self, socket: ClientSocket):
+        if socket in self.devices:
+            self.devices.remove(socket)
+        else:
+            print("Failed to remove socket: not found!")
+        if socket in self.permanent_devices:
+            self.permanent_devices.remove(socket)
+
+    def shake_hands_with(self, dev: ClientSocket, callback):
+        self.lock_mutex()
+        handshake_resp = dev.send_command(Server.CMD_HANDSHAKE)
+        io = DataInput(BytesIO(handshake_resp))
+        if (io.read_u32() == Server.HANDSHAKE_CHECK_CODE):
+            callback(DeviceHandle(dev), io)
+        else:
+            print("Invalid handshake check code!")
+            self.devices.remove(dev)
+        self.release_mutex()
 
     def shake_hands(self, callback) -> None:
         self.lock_mutex()
 
         for dev in self.devices:
-            handshake_resp = dev.send_command(Server.CMD_HANDSHAKE)
-            io = DataInput(BytesIO(handshake_resp))
-            if (io.read_u32() == Server.HANDSHAKE_CHECK_CODE):
-                callback(DeviceHandle(dev), io)
-            else:
-                print("Invalid handshake check code!")
-                self.devices.remove(dev)
+            self.shake_hands_with(dev, callback)
 
         self.release_mutex()
 
