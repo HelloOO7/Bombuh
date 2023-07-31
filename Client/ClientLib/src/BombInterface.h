@@ -24,6 +24,7 @@ namespace bconf {
         LIGHTS_ON,
         TIMER_TICK,
         TIMER_SYNC, //like TIMER_TICK but less frequent. TIMER_TICK fires every second (!)
+        CONFIG_LIGHT,
     };
 
     enum BombEventBit {
@@ -38,10 +39,11 @@ namespace bconf {
         LIGHTS_ON_BIT = (1 << LIGHTS_ON),
         TIMER_TICK_BIT = (1 << TIMER_TICK),
         TIMER_SYNC_BIT = (1 << TIMER_SYNC),
+        CONFIG_LIGHT_BIT = (1 << CONFIG_LIGHT),
 
         LIGHTS_BITS = LIGHTS_OUT_BIT | LIGHTS_ON_BIT,
 
-        ALWAYS_LISTEN_BITS = RESET_BIT | CONFIGURE_BIT | ARM_BIT | EXPLOSION_BIT | DEFUSAL_BIT
+        ALWAYS_LISTEN_BITS = RESET_BIT | CONFIGURE_BIT | ARM_BIT | EXPLOSION_BIT | DEFUSAL_BIT | CONFIG_LIGHT_BIT
     };
 
     DEFINE_ENUM_FLAG_OPERATORS(BombEventBit)

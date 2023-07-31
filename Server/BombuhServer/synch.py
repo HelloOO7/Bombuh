@@ -23,5 +23,5 @@ class Semaphore:
         if (self.owner == _thread.get_ident()):
             self.lock_count -= 1
             if (self.lock_count == 0):
-                self.hw_mutex.release()
                 self.owner = None
+                self.hw_mutex.release()

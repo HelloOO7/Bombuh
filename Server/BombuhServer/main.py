@@ -14,6 +14,7 @@ from bitcvtr import *
 from mod_sfx import SfxModule
 from mod_timer import TimerModule
 from mod_label_dummy import DummyLabelModule
+from mod_battery_dummy import DummyBatteryModule
 
 import svc_audioserver
 
@@ -44,6 +45,8 @@ def main():
     bomb.add_virtual_device(SfxModule(bomb).create_socket())
     bomb.add_virtual_device(DummyLabelModule(bomb).create_socket())
     bomb.add_virtual_device(DummyLabelModule(bomb).create_socket())
+    bomb.add_virtual_device(DummyBatteryModule(bomb).create_socket())
+    bomb.add_virtual_device(DummyBatteryModule(bomb).create_socket())
     print("Discovering I2C devices...")
     bomb.discover_modules()
     print("Device scan done")

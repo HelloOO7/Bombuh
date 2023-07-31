@@ -34,7 +34,7 @@ void BombComponent::Configure() {
 }
 
 void BombComponent::ClearConfiguredFlags() {
-    m_BombConfigDone = false;
+    m_BombConfigDone = !(GetSyncFlags() & bconf::FETCH_CONFIG);
     m_ModuleConfigDone = false;
 }
 
@@ -82,6 +82,10 @@ void BombComponent::Display() {
 
 }
 
+void BombComponent::IdleDisplay() {
+
+}
+
 void BombComponent::OnEvent(uint8_t id, void* data) {
 
 }
@@ -117,17 +121,72 @@ void DefusableModule::Defuse() {
 }
 
 void DefusableModule::Strike() {
-    m_LightOffTime = millis() + 1000;
     GetModuleLedDriver()->TurnOn(0xFF0000);
+    game::Event<ModuleLedDriver>* turnOff = game::CreateWaitEvent<ModuleLedDriver>(1000);
+    turnOff->Then(new game::Event<ModuleLedDriver>(function(game::Event<ModuleLedDriver>* e, ModuleLedDriver* drv) {
+        drv->TurnOff();
+        return true;
+    }));
+    m_LightEvents->Start(turnOff);
     m_Bomb->Strike();
+}
+
+static bool FlashConfigLedEvent(game::Event<ModuleLedDriver>* e, ModuleLedDriver* drv, bool* data) {
+    bool on = *data;
+    if (on) {
+        drv->TurnOn(0x0000FF);
+    }
+    else {
+        drv->TurnOff();
+    }
+    e
+    ->Then(game::CreateWaitEvent<ModuleLedDriver>(500))
+    ->Then(new game::Event<ModuleLedDriver>(FlashConfigLedEvent, new bool{!on}));
+    return true;
+}
+
+struct EventModuleLedScheduleParam {
+    bool m_On;
+    DefusableModule* m_Module;
+};
+
+void DefusableModule::OnEvent(uint8_t id, void* data) {
+    if (id == bconf::CONFIG_LIGHT) {
+        //Inside ISR - ensure atomicity
+        auto param = new EventModuleLedScheduleParam{
+            *static_cast<uint8_t*>(data) == 1,
+            this  
+        };
+        game::Event<ModuleLedDriver>* sched = new game::Event<ModuleLedDriver>(function(game::Event<ModuleLedDriver>* e, ModuleLedDriver* drv, EventModuleLedScheduleParam* data) {
+            if (data->m_On) {
+                e->Then(FlashConfigLedEvent, new bool{true});
+                drv->TurnOn(0x0000FF);
+            }
+            else {
+                data->m_Module->TurnOffLed();
+            }
+            return true;
+        }, param);
+        if (!m_LightEventQueue->QueueExclusive(sched, m_LightMutex)) {
+            delete sched;
+        }
+    }
 }
 
 void DefusableModule::Bootstrap() {
     GetModuleLedDriver()->Init();
+    m_LightEvents = new game::EventManager<ModuleLedDriver>(GetModuleLedDriver());
+    m_LightEventQueue = new game::EventQueue<ModuleLedDriver>(m_LightEvents);
+}
+
+void DefusableModule::TurnOffLed() {
+    GetModuleLedDriver()->TurnOff();
+    m_LightEvents->CancelAll();
+    m_LightEventQueue->Clear();
 }
 
 void DefusableModule::Reset() {
-    GetModuleLedDriver()->TurnOff();
+    TurnOffLed();
 }
 
 void DefusableModule::Standby() {
@@ -135,18 +194,20 @@ void DefusableModule::Standby() {
 
 void DefusableModule::Arm() {
     m_IsDefused = false;
+    TurnOffLed();
 }
 
 void DefusableModule::Update() {
-    if (m_LightOffTime) {
-        if (millis() >= m_LightOffTime) {
-            m_LightOffTime = 0;
-            GetModuleLedDriver()->TurnOff();
-        }
-    }
+    m_LightEventQueue->Execute();
+    m_LightEvents->Update();
     if (!m_IsDefused) {
         ActiveUpdate();
     }
+}
+
+void DefusableModule::IdleDisplay() {
+    m_LightEventQueue->Execute();
+    m_LightEvents->Update();
 }
 
 void DefusableModule::ActiveUpdate() {

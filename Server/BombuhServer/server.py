@@ -148,7 +148,7 @@ class Server:
     mutex: Semaphore
 
     def __init__(self) -> None:
-        self.i2c = I2C(0, freq=boardconst.I2C_BAUDRATE, scl=Pin(boardconst.PIN_I2C_SCL), sda=Pin(boardconst.PIN_I2C_SDA), timeout=500000)
+        self.i2c = I2C(0, freq=boardconst.I2C_BAUDRATE, scl=Pin(boardconst.PIN_I2C_SCL), sda=Pin(boardconst.PIN_I2C_SDA), timeout=1000000)
         self.devices = []
         self.mutex = Semaphore()
         self.handlers = {}
@@ -195,22 +195,21 @@ class Server:
         if socket in self.permanent_devices:
             self.permanent_devices.remove(socket)
 
-    def shake_hands_with(self, dev: ClientSocket, callback):
+    def shake_hands_with(self, dev: ClientSocket, request, callback):
         self.lock_mutex()
-        handshake_resp = dev.send_command(Server.CMD_HANDSHAKE)
+        handshake_resp = dev.send_command(Server.CMD_HANDSHAKE, request)
         io = DataInput(BytesIO(handshake_resp))
-        if (io.read_u32() == Server.HANDSHAKE_CHECK_CODE):
-            callback(DeviceHandle(dev), io)
-        else:
-            print("Invalid handshake check code!")
+        if not callback(DeviceHandle(dev), io):
+            print("Handshake failed!")
             self.devices.remove(dev)
+            
         self.release_mutex()
 
-    def shake_hands(self, callback) -> None:
+    def shake_hands(self, request, callback) -> None:
         self.lock_mutex()
 
         for dev in self.devices:
-            self.shake_hands_with(dev, callback)
+            self.shake_hands_with(dev, request, callback)
 
         self.release_mutex()
 

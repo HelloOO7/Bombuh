@@ -11,6 +11,7 @@ import  socket
 import  gc
 import  re
 import sys
+from collections import OrderedDict
 
 try :
     from microWebTemplate import MicroWebTemplate
@@ -565,7 +566,7 @@ class MicroWebSrv :
                         return False
                     data = data[n:]
                 return True
-            return False
+            return True
 
         # ------------------------------------------------------------------------
 
@@ -723,7 +724,8 @@ class MicroWebSrv :
                 text += ']'
                 return text
             else:
-                d = obj if type(obj) is dict else obj.__dict__
+                d = obj if (type(obj) is dict or type(obj) is OrderedDict) else obj.__dict__
+                #print(d)
                 text = '{'
                 first = True
                 for k, v in d.items():
@@ -732,14 +734,66 @@ class MicroWebSrv :
                     else:
                         text += ','
 
-                    text += '"' + k + '":'
+                    text += '"' + str(k) + '":'
                     text += MicroWebSrv._response.json_encode(v)
 
                 text += '}'
                 return text
 
+        def json_stream(self, obj):
+            if obj is None:
+                return self._write('null')
+            if type(obj) in (int, str, bool):
+                return self._write(dumps(obj))
+            if type(obj) is list:
+                if not self._write(bytes([0x5B])):
+                    return False
+                first = True
+                for elem in obj:
+                    if (first):
+                        first = False
+                    else:
+                        if not self._write(bytes([0x2C])):
+                            return False
+                    if not self.json_stream(elem):
+                        return False
+                if not self._write(bytes([0x5D])):
+                    return False
+                return True
+            else:
+                d = obj if (type(obj) is dict or type(obj) is OrderedDict) else obj.__dict__
+                #print(d)
+                if not self._write(bytes([0x7B])):
+                    return False
+                first = True
+                for k, v in d.items():
+                    if (first):
+                        first = False
+                    else:
+                        if not self._write(bytes([0x2C])):
+                            return False
+                    
+                    if not self._write(bytes([0x22])):
+                        return False
+                    
+                    if not self._write(str(k)):
+                        return False
+
+                    if not self._write(bytes([0x22, 0x3A])):
+                        return False
+
+                    if not self.json_stream(v):
+                        return False
+
+                if not self._write(bytes([0x7D])):
+                    return False
+                return True
+
         def WriteResponseJSONOk(self, obj=None, headers=None) :
-            return self.WriteResponse(200, headers, "application/json", "UTF-8", MicroWebSrv._response.json_encode(obj))
+            #return self.WriteResponse(200, headers, "application/json", "UTF-8", MicroWebSrv._response.json_encode(obj))
+            if not self.WriteResponse(200, headers, "application/json", "UTF-8", None):
+                return False
+            return self.json_stream(obj)
 
         # ------------------------------------------------------------------------
 

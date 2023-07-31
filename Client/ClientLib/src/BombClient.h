@@ -53,10 +53,10 @@ private:
     };
 
     struct HandshakeResponse {
-        static constexpr uint32_t CHECK_CODE = 0x616C754A;
+        static constexpr const char* CHECK_CODE = "Julka";
 
-        uint32_t    CheckCode;
-        char        ModuleInfo[];
+        char    CheckCode[6];
+        char    ModuleInfo[];
     };
 
     enum NetCommand : uint8_t {

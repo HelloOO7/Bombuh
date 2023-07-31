@@ -3,6 +3,7 @@
 
 #include "UARTPrint.h"
 
+#ifndef DISABLE_SERIAL_PRINT
 static FILE uartout = {0};
 
 // create a output function
@@ -18,6 +19,7 @@ int uart_putchar(char c, FILE *stream)
     Serial.write(c) ;
     return 0 ;
 }
+#endif
 
 void print_init(unsigned long baud)
 {

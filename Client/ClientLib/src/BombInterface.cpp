@@ -20,6 +20,7 @@ BombInterface::BombInterface(BombClient* client, bconf::SyncFlag syncFlags)
 void BombInterface::OnEvent(uint8_t eventId, void* eventData) {
     switch (eventId) {
         case bconf::RESET:
+            m_State = BombState();
             m_Client->DiscardRequests();
             break;
         case bconf::STRIKE:
@@ -128,8 +129,10 @@ void BombInterface::AckReady() {
 
 void BombInterface::AckReadyIfModuleConfigured(BombComponent* mod) {
     if (mod->m_BombConfigDone && mod->m_ModuleConfigDone) {
+        PRINTLN_P("ModuleConfigured - AckReady!");
         AckReady();
         mod->Configure();
+        PRINTLN_P("AckedReady!");
     }
 }
 

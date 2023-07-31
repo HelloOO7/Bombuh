@@ -1,9 +1,7 @@
 #ifndef __GAMEEVENT_H
 #define __GAMEEVENT_H
 
-#include "Arduino.h"
-#include "util/atomic.h"
-#include "lambda.h"
+#define function []
 
 //#define EVENT_DEBUG
 
@@ -112,20 +110,6 @@ namespace game {
     };
 
     template<typename C>
-    Event<C>* CreateWaitEvent(long ms) {
-        unsigned long* data = new unsigned long[2];
-        data[0] = 0;
-        data[1] = ms;
-        return new Event<C>(function(Event<C>* e, C* context, unsigned long* data) {
-            unsigned long time = millis();
-            if (!data[0]) {
-                data[0] = time + data[1];
-            }
-            return time >= data[0];
-        }, data);
-    }
-
-    template<typename C>
     struct EventChainHandle {
         friend class EventManager<C>;
         friend class EventChain<C>;
@@ -135,8 +119,8 @@ namespace game {
         bool           m_Active;
 
     public:
-        EventChainHandle() : m_Active{false} {
-            
+        EventChainHandle() {
+            m_Active = false;
         }
 
     private:
@@ -178,9 +162,9 @@ namespace game {
                     event->m_Chain = chain;
                 }
 
-                if (m_Events) {
-                    m_Events->m_Prev = chain;
-                }
+				if (m_Events) {
+					m_Events->m_Prev = chain;
+				}
                 m_Events = chain;
                 if (handle) {
                     handle->SetChain(this, chain);
@@ -235,7 +219,7 @@ namespace game {
                     m_IsInEvent = true;
                     if (chn->m_CurEvent->Update(static_cast<void*>(m_Container))) {
                         Event<C>* previous = chn->m_CurEvent;
-                        if (previous) {
+                        if (chn->m_CurEvent) {
                             //may have been canceled during update
                             chn->m_CurEvent = chn->m_CurEvent->m_Next;
                             delete previous;
@@ -285,106 +269,6 @@ namespace game {
                 e = e2;
             }
             m_CurEvent = nullptr;
-        }
-    };
-
-    template<typename C>
-    class EventQueue {
-    public:
-        struct Mutex {
-            friend class EventQueue;
-        private:
-            bool m_On;
-        public:
-            Mutex() : m_On{false} {
-
-            }
-        };
-    private:
-        struct Node {
-            Event<C>* m_Event;
-            Mutex* m_Mutex;
-            Node* m_Next;
-
-            ~Node() {
-                m_Mutex->m_On = false;
-            }
-        };
-
-        EventManager<C>* m_EventMgr;
-        
-        Node* m_EventHead;
-        Node* m_EventTail;
-    
-    public:
-        EventQueue(EventManager<C>* mgr) : m_EventHead{nullptr}, m_EventTail{nullptr} {
-            m_EventMgr = mgr;
-        }
-
-        void Clear() {
-            Node* n = m_EventHead;
-            while (n) {
-                Node* next = n->m_Next;
-                delete n->m_Event;
-                delete n;
-                n = next;
-            }
-            m_EventHead = nullptr;
-            m_EventTail = nullptr;
-        }
-
-        void Execute() {
-            ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-                Node* n = m_EventHead;
-                while (n) {
-                    Node* next = n->m_Next;
-                    m_EventMgr->Start(n->m_Event);
-                    delete n;
-                    n = next;
-                }
-                m_EventHead = nullptr;
-                m_EventTail = nullptr;
-            }
-        }
-    private:
-        void InsertNode(Node* n) {
-            if (!m_EventHead) {
-                m_EventHead = n;
-            }
-            else {
-                m_EventTail->m_Next = n;
-            }
-            m_EventTail = n;
-        }
-    public:
-        Event<C>* Queue(Event<C>* event) {
-            ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-                Node* n = new Node{event, nullptr, nullptr};
-                InsertNode(n);
-            }
-            return event;
-        }
-
-        template<typename F, typename D>
-        Event<C>* Queue(F func, D* data) {
-            return Queue(new Event<C>(func, data));
-        }
-
-        template<typename F>
-        Event<C>* Then(F func) {
-            return Queue(new Event<C>(func));
-        }
-
-        bool QueueExclusive(Event<C>* event, Mutex& mutex) {
-            ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
-                if (!mutex.m_On) {
-                    mutex.m_On = true;
-                    Node* n = new Node{event, &mutex, nullptr};
-                    InsertNode(n);
-                    return true;
-                }
-            }
-            return false;
         }
     };
 }

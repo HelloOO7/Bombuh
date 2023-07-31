@@ -71,6 +71,9 @@ void ComponentMain::Loop() {
         }
         m_Component->Display();
     }
+    else {
+        m_Component->IdleDisplay();
+    }
 }
 
 void ComponentMain::DispatchEvent(uint8_t id, void* data) {

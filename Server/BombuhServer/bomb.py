@@ -3,9 +3,12 @@ from server import *
 from bitcvtr import *
 import time
 import random
+from collections import OrderedDict
 
 from server import DeviceHandle
 from dfplayer import Player
+
+import gc
 
 class VariableType:
     NULL = 0
@@ -19,6 +22,7 @@ class ComponentVariable:
     name: str
     type: int
     value: object
+    extra: object
 
     def __init__(self, io: DataInput) -> None:
         self.name = io.read_str()
@@ -27,15 +31,16 @@ class ComponentVariable:
 
 class ComponentConfig:
     id: int
-    variables: dict[str, str]
+    variables: OrderedDict[str, object]
 
     def __init__(self, id: int) -> None:
         self.id = id
-        self.variables = dict()
+        self.variables = OrderedDict()
 
 class BombConfig:
     time_limit_ms: int
     strikes: int
+    serial: str
 
     component_vars: list[ComponentConfig]
 
@@ -43,8 +48,13 @@ class BombConfig:
         self.component_vars = []
 
 class ComponentHandleBase:
+    class DataType:
+        VARIABLE = 0
+        ENUM_DEFINITION = 1
+
     comm_device: DeviceHandle
     accept_event_bits: int
+    enum_definitions: list[list[str]]
     variables: list[ComponentVariable]
 
     config_cache: bytes
@@ -58,9 +68,23 @@ class ComponentHandleBase:
 
     def read_vars(self, io: DataInput) -> None:
         self.variables = []
+        self.enum_definitions = []
         var_cnt = io.read_u8()
         for i in range(var_cnt):
-            self.variables.append(ComponentVariable(io))
+            dt = io.read_u8()
+            if (dt == ComponentHandleBase.DataType.VARIABLE):
+                var = ComponentVariable(io)
+
+                if (var.type == VariableType.STR_ENUM):
+                    var.extra = io.read_u8()
+
+                self.variables.append(var)
+            elif (dt == ComponentHandleBase.DataType.ENUM_DEFINITION):
+                cnt = io.read_u8()
+                d = list()
+                for i in range(cnt):
+                    d.append(io.read_str())
+                self.enum_definitions.append(d)
 
     def id(self):
         return self.comm_device.unique_id()
@@ -186,6 +210,7 @@ class BombEvent:
     LIGHTS_ON = 7
     TIMER_TICK = 8
     TIMER_SYNC = 9
+    CONFIG_LIGHT = 10
 
 class BombState:
     IDLE = 'IDLE'
@@ -217,7 +242,7 @@ class VirtualModule:
     def handle_event(self, id: int, data):
         pass
 
-    def list_variables(self) -> list[tuple[str, int]]:
+    def list_variables(self) -> list[tuple]:
         return []
 
     def comm_poll(self, data: bytes) -> bytes:
@@ -234,17 +259,48 @@ class VirtualModule:
     
     def comm_handshake(self, data: bytes) -> bytes:
         out: DataOutput = DataOutput()
-        out.write_u32(0x616C754A)
+        out.write_cstr("Julka")
         out.write_u32(self.event_bits)
         out.write_u8(0) #type = module
         out.write_str(self.name)
         out.write_u8(ModuleFlag.DECORATIVE)
         out.write_u16(0) # extra data size
         vars = self.list_variables()
-        out.write_u8(len(vars))
+
+        vidx_to_enumidx: dict[int, int] = dict()
+        enumhash_to_enumidx: dict[int, int] = dict()
+        enumlist = []
+        vidx = 0
         for v in vars:
+            if (v[1] == VariableType.STR_ENUM):
+                enmvals = v[2]
+                all = ''
+                for enmval in enmvals:
+                    all += enmval
+                key = Server.str_hash(all)
+                if key not in enumhash_to_enumidx:
+                    enumhash_to_enumidx[key] = len(enumhash_to_enumidx)
+                    enumlist.append(enmvals)
+                enumidx = enumhash_to_enumidx[key]
+                vidx_to_enumidx[vidx] = enumidx
+
+            vidx += 1
+
+        vidx = 0
+        out.write_u8(len(vars) + len(enumlist))
+        for e in enumlist:
+            out.write_u8(ComponentHandleBase.DataType.ENUM_DEFINITION)
+            out.write_u8(len(e))
+            for econst in e:
+                out.write_str(econst)
+        for v in vars:
+            out.write_u8(ComponentHandleBase.DataType.VARIABLE)
             out.write_str(v[0])
             out.write_u8(v[1])
+            if (v[1] == VariableType.STR_ENUM):
+                out.write_u8(vidx_to_enumidx[vidx])
+            vidx += 1
+
         return out.buffer()
 
     def handle_packet(self, data: bytes):
@@ -300,7 +356,11 @@ class BaseService:
     def update(self) -> None:
         pass
 
+def randbool():
+    return random.randint(0, 1) == 1
+
 class Bomb:
+    DECOUPLE_SERIAL_AND_RNG = True
     STRIKE_TO_TIMER_SCALE = [1.0, 1.25, 1.5, 3.0, 6.0]
     SERIAL_NUMBER_LENGTH = 6
     SERIAL_NUMBER_CHARS = [ # Based on the logic in KTANE
@@ -435,6 +495,12 @@ class Bomb:
         for comp in self.all_components:
             comp.config_cache = Bomb.pack_buffer(comp.build_config())
 
+    def release_configs(self):
+        self.bomb_cfg_data = None
+        for comp in self.all_components:
+            comp.config_cache = None
+        gc.collect()
+
     def build_bomb_config(self) -> bytes:
         out = DataOutput()
         
@@ -445,15 +511,22 @@ class Bomb:
 
         out.write_u16(len(self.modules))
         modules_ptr = out.alloc_pointer()
+        
         dmy_label_ct = 0
         for mod in self.modules:
             if (mod.name == '$DummyLabel'):
                 dmy_label_ct += 1
+
+        dmy_battery_ct = 0
+        for mod in self.modules:
+            if (mod.name == '$DummyBattery'):
+                dmy_battery_ct += 1
+
         out.write_u16(len(self.labels) + dmy_label_ct)
         labels_ptr = out.alloc_pointer()
         out.write_u16(len(self.ports))
         ports_ptr = out.alloc_pointer()
-        out.write_u16(len(self.batteries))
+        out.write_u16(len(self.batteries) + dmy_battery_ct)
         batteries_ptr = out.alloc_pointer()
 
         modules_ptr.set_here()
@@ -485,6 +558,9 @@ class Bomb:
         batteries_ptr.set_here()
         for batt in self.batteries:
             out.write_u8(batt.count).write_u8(batt.size)
+        for mod in self.modules:
+            if (mod.name == '$DummyBattery'):
+                out.write_u8(['None', '1', '2'].index(mod.get_var('Count'))).write_u8(0)
 
         return out.buffer()
 
@@ -500,9 +576,12 @@ class Bomb:
             flags |= SerialFlag.LAST_DIGIT_ODD
         return flags
 
+    def set_module_random_seed(self):
+        self.random_seed = Server.str_hash(self.serial_number) if Bomb.DECOUPLE_SERIAL_AND_RNG else random.randint()
+
     def set_serial(self, serial: str) -> None:
         self.serial_number = serial
-        self.random_seed = Server.str_hash(serial)
+        self.set_module_random_seed()
 
     def set_random_serial(self) -> None:
         self.set_serial(self.generate_serial())
@@ -532,10 +611,13 @@ class Bomb:
     def get_service(self, name: str) -> BaseService:
         return self.services[name]
 
+    def create_handshake_request(self):
+        return 'Chceš-li se propojit, pak pošli v odpověď, co nejkrásnějšího kdy spatřil tento svět.'.encode()
+
     def add_virtual_device(self, socket: ClientSocket):
         self.device_mutex.lock()
         self.srv.add_socket(socket, True)
-        self.srv.shake_hands_with(socket, self.handshake_callback)
+        self.srv.shake_hands_with(socket, self.create_handshake_request(), self.handshake_callback)
         self.device_mutex.release()
 
     def remove_virtual_device(self, socket: ClientSocket):
@@ -553,8 +635,13 @@ class Bomb:
     def device_ready(self, dev: int):
         print("Device ready:", dev)
         self.devices_remaining_to_ready.remove(dev)
+        if (self.configuration_done()):
+            self.release_configs()
 
     def handshake_callback(self, dev: DeviceHandle, io: DataInput):
+        check: str = io.read_cstr()
+        if (Server.str_hash(check) != 708580220):
+            return False
         event_bits = io.read_u32()
         type = io.read_u8()
         map = [ModuleHandle, LabelHandle, PortHandle, BatteryHandle]
@@ -565,8 +652,10 @@ class Bomb:
             self.all_components.append(obj)
             lists[type].append(obj)
             self.dev_to_component_dict[dev.unique_id()] = obj
+            return True
         else:
-            print("Invalid handshake component type!")
+            print("Invalid handshake component type!")        
+            return False
 
     def discover_modules(self) -> None:
         self.device_mutex.lock()
@@ -574,9 +663,38 @@ class Bomb:
             list.clear()
             
         self.srv.discover()
-        self.srv.shake_hands(self.handshake_callback)
+        self.srv.shake_hands(self.create_handshake_request(), self.handshake_callback)
         self.reset()
         self.device_mutex.release()
+        gc.collect()
+
+    def generate_config(self, serial: str) -> BombConfig:
+        config = BombConfig()
+
+        config.strikes = 3
+        config.time_limit_ms = 5*60*1000
+        config.serial = serial
+
+        random.seed(time.time() if Bomb.DECOUPLE_SERIAL_AND_RNG else Server.str_hash(serial))
+
+        for mod in self.modules:
+            compcfg = ComponentConfig(mod.id())
+            for varinfo in mod.variables:
+                outval: object = None
+                if varinfo.type == VariableType.BOOL:
+                    outval = randbool()
+                elif varinfo.type == VariableType.STR_ENUM:
+                    outval = random.choice(mod.enum_definitions[varinfo.extra])
+                elif mod.name == '$DummyLabel':
+                    outval = random.choice(['', '', '', '', '', 'SND', 'CLR', 'CAR', 'IND', 'FRQ', 'STG', 'NSA', 'MSA', 'TRN', 'BOB', 'FRK'])
+                else:
+                    print("ERROR: Non-configurable variable type", varinfo.type)
+
+                if outval is not None:
+                    compcfg.variables[varinfo.name] = outval
+            config.component_vars.append(compcfg)
+
+        return config
 
     def configure(self, config: BombConfig) -> None:
         print("Begin configuration")
@@ -585,7 +703,7 @@ class Bomb:
         self.timer_ms = self.timer_limit
         self.strikes_max = config.strikes
         self.strikes = 0
-        self.set_random_serial()
+        self.set_serial(config.serial)
         print("Bomb serial number", self.serial_number)
 
         for cc in config.component_vars:
@@ -611,6 +729,17 @@ class Bomb:
                         VariableType.STR: to_str,
                         VariableType.STR_ENUM: to_str
                     }[var.type](raw_value)
+
+        random.seed(time.time() if Bomb.DECOUPLE_SERIAL_AND_RNG else Server.str_hash(config.serial))
+        for lbl in self.labels:
+            lbl.used_option = random.choice(lbl.text_options)
+            lbl.is_lit = randbool()
+
+        for port in self.ports:
+            port.is_used = randbool()
+
+        for batt in self.batteries:
+            batt.is_used = randbool()
 
         print("Building config binaries...")
         self.build_configs()
@@ -735,6 +864,10 @@ class Bomb:
         for comp in self.all_components:
             if comp.accepts_event(eventId):
                 self.srv.send_event(comp.comm_device, packet)
+
+    def device_event(self, device_id: int, eventId: int, params = None):
+        packet = self.srv.make_event_packet(eventId, params)
+        self.srv.send_event(self.dev_to_component_dict[device_id].comm_device, packet)
 
     def reset(self) -> None:
         self.state = BombState.IDLE

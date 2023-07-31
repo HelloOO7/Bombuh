@@ -82,6 +82,9 @@ namespace comm {
             read += hwread;
             goto START; //prevent recursion
         }
+        #ifdef DEBUG
+        Serial.flush();
+        #endif
         return read;
     }
 

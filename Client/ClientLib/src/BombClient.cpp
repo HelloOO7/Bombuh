@@ -147,7 +147,7 @@ void BombClient::RespondToHandshake() {
     size_t packetSize = dataSize + sizeof(HandshakeResponse);
     void* packet = malloc(packetSize);
     HandshakeResponse* r = reinterpret_cast<HandshakeResponse*>(packet);
-    r->CheckCode = HandshakeResponse::CHECK_CODE;
+    memcpy(r->CheckCode, HandshakeResponse::CHECK_CODE, sizeof(r->CheckCode));
     memcpy(&r->ModuleInfo, data, dataSize);
     free(data);
     WritePacket(r, packetSize, true);

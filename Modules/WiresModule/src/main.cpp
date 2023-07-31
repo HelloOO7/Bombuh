@@ -6,15 +6,6 @@
 #include "GameEvent.h"
 #include "NeopixelModuleLedDriver.h"
 
-static const ModuleInfoStreamBuilder::VariableParam* WIRE_VARS = BOMB_VARIABLES_ARRAY(
-	{"Drát 1", VAR_STR_ENUM},
-	{"Drát 2", VAR_STR_ENUM},
-	{"Drát 3", VAR_STR_ENUM},
-	{"Drát 4", VAR_STR_ENUM},
-	{"Drát 5", VAR_STR_ENUM},
-	{"Drát 6", VAR_STR_ENUM}
-);
-
 enum WireColor {
 	WIRE_NOT_PRESENT,
 	WIRE_BLACK,
@@ -34,6 +25,17 @@ static const char* WIRE_COLOR_NAMES[] = {
 	"White",
 	"Yellow"
 };
+
+static const ModuleInfoStreamBuilder::EnumExtra WIRE_COLOR_ENUM{WIRE_COLOR_MAX, WIRE_COLOR_NAMES};
+
+static const ModuleInfoStreamBuilder::VariableParam* WIRE_VARS = BOMB_VARIABLES_ARRAY(
+	{"Drát 1", VAR_STR_ENUM, &WIRE_COLOR_ENUM},
+	{"Drát 2", VAR_STR_ENUM, &WIRE_COLOR_ENUM},
+	{"Drát 3", VAR_STR_ENUM, &WIRE_COLOR_ENUM},
+	{"Drát 4", VAR_STR_ENUM, &WIRE_COLOR_ENUM},
+	{"Drát 5", VAR_STR_ENUM, &WIRE_COLOR_ENUM},
+	{"Drát 6", VAR_STR_ENUM, &WIRE_COLOR_ENUM}
+);
 
 class MazeModule : public DefusableModule, NeopixelLedModuleTrait {
 private:
@@ -156,7 +158,7 @@ public:
 					return GetLastWireOfColor(WIRE_RED);
 				}
 				if (m_WireColors[LAST_WIRE] == WIRE_YELLOW && m_WireCountsByColor[WIRE_RED] == 0) return FIRST_WIRE;
-				if (m_WireColors[WIRE_BLUE] == 1) return FIRST_WIRE;
+				if (m_WireCountsByColor[WIRE_BLUE] == 1) return FIRST_WIRE;
 				if (m_WireColors[WIRE_YELLOW] > 1) return LAST_WIRE;
 				return SECOND_WIRE;
 			case 5:
@@ -165,8 +167,8 @@ public:
 				if (m_WireCountsByColor[WIRE_BLACK] == 0) return SECOND_WIRE;
 				return FIRST_WIRE;
 			case 6:
-				if (m_WireCountsByColor[WIRE_YELLOW] && m_SerialSuffixOdd) return THIRD_WIRE;
-				if (m_WireCountsByColor[WIRE_YELLOW] && m_WireCountsByColor[WIRE_WHITE] > 1) return FOURTH_WIRE;
+				if (m_WireCountsByColor[WIRE_YELLOW] == 0 && m_SerialSuffixOdd) return THIRD_WIRE;
+				if (m_WireCountsByColor[WIRE_YELLOW] == 1 && m_WireCountsByColor[WIRE_WHITE] > 1) return FOURTH_WIRE;
 				if (m_WireCountsByColor[WIRE_RED] == 0) return LAST_WIRE;
 				return FOURTH_WIRE;
 		}

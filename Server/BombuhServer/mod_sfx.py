@@ -14,6 +14,8 @@ class SfxModule(VirtualModule):
         BombEvent.DEFUSAL: (2, 0.7)
     }
     EXPLOSION_SOUND_COUNT = 16
+    SOUND_ENABLED = True
+    TICKING_ENABLED = False
 
     player: Player
     cooldown_end: int
@@ -24,6 +26,8 @@ class SfxModule(VirtualModule):
         self.cooldown_end = None
 
     def handle_event(self, id: int, data):
+        if not SfxModule.SOUND_ENABLED:
+            return
         ts = time.ticks_ms()
         if self.cooldown_end is not None and (time.ticks_diff(ts, self.cooldown_end) < 0):
             return
@@ -38,9 +42,10 @@ class SfxModule(VirtualModule):
                 #self.player.volume(0.9)
                 self.player.play(SfxFolder.EXPLOSIONS, random.randint(1, SfxModule.EXPLOSION_SOUND_COUNT))
             elif id == BombEvent.TIMER_TICK:
-                #self.player.volume(0.1)
-                index = min(2, self.bomb.strikes) + 1
-                self.player.play(SfxFolder.BEEPS, index)
+                if SfxModule.TICKING_ENABLED:
+                    #self.player.volume(0.1)
+                    index = min(2, self.bomb.strikes) + 1
+                    self.player.play(SfxFolder.BEEPS, index)
             elif id == BombEvent.ARM:
                 self.player.config()
                 self.player.volume(0.6)

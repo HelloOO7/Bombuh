@@ -357,13 +357,15 @@ public:
 	void SetStartParams(uint32_t timeLimit, float timescale) {
 		m_TimeLimit = timeLimit;
 		m_Timescale = timescale;
-		UpdateTimer(timeLimit, timescale);
+		UpdateTimer(timeLimit, timescale, true);
 	}
 
-	void UpdateTimer(int32_t timerValue, float timescale) {
-		m_LastTimerUpdate = millis();
-		m_LastTimerValue = timerValue;
-		m_Timescale = timescale;
+	void UpdateTimer(int32_t timerValue, float timescale, bool force = false) {
+		if (force || timerValue <= GetTimerValue()) { //prevent lagging back due to request latency
+			m_LastTimerUpdate = millis();
+			m_LastTimerValue = timerValue;
+			m_Timescale = timescale;
+		}
 	}
 
 	int32_t GetTimerValue() {
@@ -488,6 +490,7 @@ void StartPlayback(MusicPlayer* player) {
 }
 
 void PlayGameplayMusic(int32_t initialTimer) {
+	printf("PlayGameplayMusic timer %d\n", initialTimer);
 	StopPlayback(); //early call to free file handles
 	SoundList* sndlist = RandomSoundList();
 	gameplayMusic = new GameplayMusicPlayer(sndlist, "/Gameplay/Stinger.wav");
@@ -574,11 +577,15 @@ void InitNetworkServer() {
 	});
 
 	g_Server.on("/update-gameplay", [](AsyncWebServerRequest* request) {
+		unsigned long requestStart = millis();
 		bool post = request->method() == HTTP_POST;
 		if (request->hasParam("timer", post) && request->hasParam("timescale", post)) {
 			g_PlayMutex.lock();
 			if (gameplayMusic) {
-				gameplayMusic->UpdateTimer(request->getParam("timer", post)->value().toInt(), request->getParam("timescale", post)->value().toFloat());
+				gameplayMusic->UpdateTimer(
+					request->getParam("timer", post)->value().toInt() - (millis() - requestStart) - 200, 
+					request->getParam("timescale", post)->value().toFloat()
+				);
 				gameplayMusic->Update(); //call update before mutex is unlocked
 				request->send(200);
 			}

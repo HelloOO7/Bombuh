@@ -69,11 +69,27 @@ def apiDiscoverModules(client, response: MicroWebSrv._response):
 	wwwBomb.discover_modules()
 	response.WriteResponseOk()
 
+@MicroWebSrv.route('/api/module-name-dict', 'GET')
+def apiModuleNameDict(client, response: MicroWebSrv._response):
+	ret = dict()
+	for mod in wwwBomb.modules:
+		ret[mod.id()] = mod.name
+
+	response.WriteResponseJSONOk(ret)
+
 @MicroWebSrv.route('/api/list-modules', 'GET')
 def apiListModules(client, response: MicroWebSrv._response):
 	ret = []
 	for mod in wwwBomb.modules:
-		ret.append({'id': mod.id(), 'name': mod.name, 'variables': mod.variables})
+		if mod.name.startswith('$'):
+			continue
+		ret.append({
+			'id': mod.id(), 
+			'name': mod.name, 
+			'variables': mod.variables, 
+			'enum_definitions': mod.enum_definitions
+		})
+	gc.collect()
 	response.WriteResponseJSONOk(ret)
 
 @MicroWebSrv.route('/api/configure', 'POST')
@@ -82,6 +98,8 @@ def apiConfigure(client: MicroWebSrv._client, response: MicroWebSrv._response):
 
 	form = client.ReadRequestContentAsJSON()
 	bad_fields = []
+
+	conf.serial = form.get('bomb.serial') if form.get('bomb.serial') else wwwBomb.generate_serial()
 	
 	for variable in ['bomb.timer', 'bomb.strikes']:
 		if not form.get(variable):
@@ -106,6 +124,31 @@ def apiConfigure(client: MicroWebSrv._client, response: MicroWebSrv._response):
 
 		wwwBomb.configure(conf)
 		response.WriteResponseOk()
+
+@MicroWebSrv.route('/api/autoconf', 'POST')
+def apiAutoConfigure(client: MicroWebSrv._client, response: MicroWebSrv._response):
+	request: dict = client.ReadRequestContentAsJSON()
+	serial = request.get('serial')
+	if not serial:
+		serial = wwwBomb.generate_serial()
+	config = wwwBomb.generate_config(serial)
+	time = request.get('time_limit')
+	strikes = request.get('strikes')
+	if time:
+		config.time_limit_ms = time
+	if strikes:
+		config.strikes = strikes
+	wwwBomb.configure(config)
+	response.WriteResponseJSONOk(config)
+
+@MicroWebSrv.route('/api/autoconf-light', 'POST')
+def apiAutoConfigureStep(client: MicroWebSrv._client, response: MicroWebSrv._response):
+	request: dict = client.ReadRequestContentAsJSON()
+	deviceid: int = request.get('device_id')
+	on: bool = request.get('is_on')
+	print("Send light event dev", deviceid, "on", on)
+	wwwBomb.device_event(deviceid, BombEvent.CONFIG_LIGHT, [1 if on else 0])
+	response.WriteResponseJSONOk()
 
 @MicroWebSrv.route('/api/configured-check', 'GET')
 def apiConfiguredCheck(client: MicroWebSrv._client, response: MicroWebSrv._response):
@@ -174,7 +217,7 @@ def start_thread(bomb: Bomb):
 	mws.AcceptWebSocketCallback = _acceptWebSocketCallback
 	mwsServer = mws
 	gameMonitor = WsGameMonitor()
-	_thread.stack_size(12288)
+	_thread.stack_size(16384)
 	mws.Start(threaded=True)
 
 def shutdown():

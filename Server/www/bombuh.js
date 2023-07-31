@@ -47,7 +47,8 @@
         STR: 1,
         INT: 2,
         LONG: 3,
-        BOOL: 4
+        BOOL: 4,
+        STR_ENUM: 5
     };
 
     function unhide(selector) {
@@ -93,6 +94,12 @@
         }
 
         function changeState(newState) {
+            function done() {
+                unhide('.visible-if-' + newState);
+                syncLabelWidths();
+                endLoading();
+            }
+
             if (state) {
                 hide(':not(.visible-if-' + newState + ') .visible-if-' + state);
             }
@@ -101,16 +108,64 @@
                 closeGameMonitor();
             }
             else {
-                startGameMonitor(endLoading);
+                startGameMonitor(done);
             }
             if (state == 'SUMMARY') {
-                fillSummaryScreen().then(endLoading);
+                fillSummaryScreen().then(done);
             }
             if (state == 'IDLE') {
-                loadModules().then(endLoading);
+                loadModules().then(done);
             }
-            unhide('.visible-if-' + newState);
-            syncLabelWidths();
+        }
+
+        function convTimerInput(text) {
+            time = text.split(':');
+            return parseInt(time[0]) * 60000 + parseInt(time[1]) * 1000;
+        }
+
+        function createVarEditElement(module, variable) {
+            let varDiv = document.createElement('div');
+
+            let input = document.createElement('input');
+            switch (variable.type) {
+                case VarType.LONG:
+                case VarType.INT:
+                    input.type = 'number';
+                    if (variable.value) input.value = variable.value;
+                    break;
+                case VarType.STR:
+                    input.type = 'text';
+                    input.value = variable.value;
+                    break;
+                case VarType.STR_ENUM:
+                    input = document.createElement('select');
+                    module.enum_definitions[variable.extra].forEach(function(enumconst) {
+                        let option = document.createElement('option');
+                        option.textContent = enumconst;
+                        if (enumconst == variable.value) {
+                            option.selected = true;
+                        }
+                        input.appendChild(option);
+                    });
+                    break;
+                case VarType.BOOL:
+                    input.type = 'checkbox';
+                    input.checked = variable.value;
+                    break;
+            }
+
+            let varid = module.id + '.' + variable.name;
+            input.id = 'input-' + varid;
+            input.name = 'module.' + varid;
+
+            let label = document.createElement('label');
+            label.htmlFor = input.id;
+            label.innerText = variable.name;
+            
+            varDiv.appendChild(label);
+            varDiv.appendChild(input);
+            
+            return varDiv;
         }
 
         ajaxGet('/api/state').then(function(resp) {
@@ -169,10 +224,15 @@
             });
         });
 
+        function clearExtraContainer() {
+            document.getElementById('configuration-extra-container').innerHTML = '';
+        }
+
         function loadModules() {
             return ajaxGet('/api/list-modules').then(function(moduleList) {
                 if (moduleList.ok) {
                     moduleList.json().then(function(json) {
+                        clearExtraContainer();
                         let moduleBlock = ensureClearBlock(document.getElementById('configuration-extra-container'), 'modulelist');
                         if (json.length) {
                             let title = document.createElement('h3');
@@ -189,36 +249,7 @@
                                 let fieldset = document.createElement('fieldset');
                                 fieldset.style.borderStyle = 'none';
                                 module.variables.forEach(function(variable) {
-                                    let varDiv = document.createElement('div');
-
-                                    let input = document.createElement('input');
-                                    let varid = module.id + '.' + variable.name;
-                                    input.id = 'input-' + varid;
-                                    input.name = 'module.' + varid;
-                                    switch (variable.type) {
-                                        case VarType.LONG:
-                                        case VarType.INT:
-                                            input.type = 'number';
-                                            if (variable.value) input.value = variable.value;
-                                            break;
-                                        case VarType.STR:
-                                            input.type = 'text';
-                                            input.value = variable.value;
-                                            break;
-                                        case VarType.BOOL:
-                                            input.type = 'checkbox';
-                                            input.checked = variable.value;
-                                            break;
-                                    }
-
-                                    let label = document.createElement('label');
-                                    label.htmlFor = input.id;
-                                    label.innerText = variable.name;
-                                    
-                                    varDiv.appendChild(label);
-                                    varDiv.appendChild(input);
-
-                                    fieldset.appendChild(varDiv);
+                                    fieldset.appendChild(createVarEditElement(module, variable));
                                 });
                                 variables.appendChild(fieldset);
                                 info.appendChild(variables);
@@ -449,9 +480,12 @@
                         break;
                 }
             });
-            let time = data['bomb.timer'].split(':');
-            let timeMillis = parseInt(time[0]) * 60000 + parseInt(time[1]) * 1000;
-            data['bomb.timer'] = timeMillis;
+            form.querySelectorAll('select').forEach(function(input) {
+                input.classList.remove('incorrect');
+                data[input.name] = input.value;
+            });
+            let time = data['bomb.timer']
+            data['bomb.timer'] = convTimerInput(time);
             ajaxPost('/api/configure', data).then(function(resp) {
                 if (resp.ok) {
                     resetTimerAndStrikes();
@@ -491,7 +525,174 @@
             });
         });
 
-        addListener('.action-start-game', function(elem) {
+        addListener('.action-autoconf', function(elem) {
+            elem.disabled = true;
+            hide('.action-configure-bomb');
+            let timer = convTimerInput(document.getElementById('conf-bomb-time').value);
+            let serial = document.getElementById('conf-bomb-serial').value;
+            let strikes = parseInt(document.getElementById('conf-bomb-strikes').value);
+
+            ajaxPost('/api/autoconf', {
+                time_limit: timer,
+                serial: serial,
+                strikes: strikes
+            }).then(function(resp) {
+                if (resp.ok) {
+                    resp.json().then(function(jsonconfig) {
+                        let moduledict = {};
+
+                        function autoconfWiz(config) {
+                            let compConfigs = config.component_vars;
+                            let nonemptyConfigs = [];
+                            compConfigs.forEach(function(elem) {
+                                if (Object.keys(elem.variables).length > 0) {
+                                    nonemptyConfigs.push(elem);
+                                }
+                            });
+                            compConfigs = nonemptyConfigs;
+
+                            clearExtraContainer();
+                            let wizardContainer = ensureClearBlock(document.getElementById('configuration-extra-container'), 'wizard');
+
+                            let index = 0;
+                            compConfigs.forEach(function(compcfg) {
+                                let compDiv = document.createElement('div');
+                                compDiv.classList.add('wizard-step');
+                                if (index > 0) {
+                                    hide(compDiv);
+                                }
+                                compDiv.dataset.device_id = compcfg.id.toString();
+                                compDiv.dataset.index = (index++).toString();
+                                let fieldset = document.createElement('fieldset');
+                                let legend = document.createElement('legend');
+                                legend.textContent = moduledict[compcfg.id];
+                                fieldset.appendChild(legend);
+
+                                for (const [varname, varvalue] of Object.entries(compcfg.variables)) {
+                                    let value = document.createElement('span');
+                                    value.style.display = 'inline-block';
+                                    let varid = compcfg.id + '.' + varname;
+                                    value.id = 'value-' + varid;
+                                    value.textContent = varvalue;
+                                    value.style.paddingLeft = '15px';
+
+                                    let label = document.createElement('label');
+                                    label.htmlFor = value.id;
+                                    label.innerText = varname + ': ';
+
+                                    let varDiv = document.createElement('div');
+                                    varDiv.appendChild(label);
+                                    varDiv.appendChild(value);
+
+                                    fieldset.appendChild(varDiv);
+                                }
+                                
+                                compDiv.appendChild(fieldset);
+                                wizardContainer.appendChild(compDiv);
+                            });
+
+                            let controls = document.createElement('div');
+                            let curStep = -1;
+                            let curDevice = null;
+
+                            function changeWizardStep(index) {
+                                if (curStep >= 0) {
+                                    ajaxPost('/api/autoconf-light', {'device_id': curDevice, 'is_on': false});
+                                }
+                                document.querySelectorAll('.wizard-step').forEach(function(step) {
+                                    if (index == step.dataset.index) {
+                                        unhide(step);
+                                        curDevice = parseInt(step.dataset.device_id);
+                                        ajaxPost('/api/autoconf-light', {'device_id': curDevice, 'is_on': true});
+                                    }
+                                    else {
+                                        hide(step);
+                                    }
+                                });
+                                curStep = index;
+                                if (curStep == compConfigs.length) {
+                                    btnNext.disabled = true;
+                                    btnPrev.disabled = true;
+                                    clearExtraContainer();
+                                    ensureClearBlock(document.getElementById('configuration-extra-container'), 'readyscreen').innerHTML =
+                                    `
+                                    <div id="ready-timer">
+                                        <h1>${formatTimeMM(config.time_limit_ms)}:${formatTimeSS(config.time_limit_ms)}</h1>
+                                    </div>
+                                    <button type="button" class="action-start-game" id="ready-start-game">Start hry</button>
+                                    `;
+                                    addListener('#ready-start-game', doStartGame);
+                                }
+                            }
+                            
+                            let btnPrev = document.createElement('button');
+                            btnPrev.type = 'button';
+                            btnPrev.textContent = 'Předchozí';
+                            btnPrev.onclick = function() {
+                                changeWizardStep(getWizardStep() - 1);
+                                updateButtons();
+                            };
+
+                            let btnNext = document.createElement('button');
+                            btnNext.type = 'button';
+                            btnNext.onclick = function() {
+                                changeWizardStep(getWizardStep() + 1);
+                                updateButtons();
+                            };
+                            
+                            function getWizardStep() {
+                                let e = document.querySelector('.wizard-step:not(.hidden)');
+                                return e ? parseInt(e.dataset.index) : compConfigs.length;
+                            }
+
+                            function updateButtons() {
+                                let step = getWizardStep();
+                                if (step == compConfigs.length - 1) {
+                                    btnNext.textContent = 'Dokončit';
+                                }
+                                else {
+                                    btnNext.textContent = 'Další';
+                                }
+                                btnPrev.disabled = step == 0;
+                            }
+
+                            controls.append(btnPrev);
+                            controls.append(btnNext);
+
+                            updateButtons();
+                            changeWizardStep(0);
+                            
+                            wizardContainer.appendChild(controls);
+                            syncLabelWidths();
+                        }
+
+                        function configCheck() {
+                            ajaxGet('/api/configured-check').then(function(resp) {
+                                if (resp.ok) {
+                                    resp.json().then(function(json) {
+                                        if (json.configured) {
+                                            ajaxGet('/api/module-name-dict').then(function(resp) {
+                                                resp.json().then(function(json) {
+                                                    moduledict = json;
+                                                    elem.disabled = false;
+                                                    autoconfWiz(jsonconfig);
+                                                });
+                                            });
+                                        }
+                                        else {
+                                            setTimeout(configCheck, 500);
+                                        }
+                                    });
+                                }
+                            });
+                        };
+                        configCheck();
+                    });
+                }
+            });
+        });
+
+        function doStartGame(elem) {
             elem.disabled = true;
             ajaxPost('/api/start-game').then(function(resp) {
                 elem.disabled = false;
@@ -505,7 +706,9 @@
                     });
                 }
             });
-        });
+        }
+        
+        addListener('.action-start-game', doStartGame);
 
         addListener('.action-stop-game', function(elem) {
             elem.disabled = true;

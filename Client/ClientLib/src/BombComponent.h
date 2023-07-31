@@ -56,6 +56,8 @@ public:
 
     virtual void Display();
 
+    virtual void IdleDisplay();
+
     virtual void OnEvent(uint8_t id, void* data);
 
     virtual bconf::SyncFlag GetSyncFlags();
@@ -69,13 +71,15 @@ public:
 template<typename M>
 class EventfulComponentTrait {
 protected:
+    using Event = game::Event<M>;
+
     game::EventManager<M> m_Events;
 
     EventfulComponentTrait() : m_Events(static_cast<M*>(this)) {
 
     }
 
-    inline void StartEvent(game::Event<M>* event, game::EventChainHandle<M>* handle = nullptr) {
+    inline void StartEvent(Event* event, game::EventChainHandle<M>* handle = nullptr) {
         m_Events.Start(event, handle);
     }
 
@@ -93,7 +97,7 @@ class BombModule : public BombComponent, public NamedComponentTrait {
     virtual void LoadConfiguration(ModuleConfig* config) = 0;
     void LoadConfiguration(void* config) override; 
 
-    virtual BombConfig::ModuleFlag GetModuleFlags();
+    virtual BombConfig::ModuleFlag GetModuleFlags() = 0;
 
     void GetInfo(void** pData, size_t* pSize) override;
 };
@@ -101,7 +105,11 @@ class BombModule : public BombComponent, public NamedComponentTrait {
 class DefusableModule : public BombModule {
 private:
     bool m_IsDefused;
-    unsigned long m_LightOffTime;
+
+    game::EventManager<ModuleLedDriver>* m_LightEvents;
+    game::EventQueue<ModuleLedDriver>* m_LightEventQueue;
+
+    game::EventQueue<ModuleLedDriver>::Mutex m_LightMutex;
 public:
     BombConfig::ModuleFlag GetModuleFlags() override;
 
@@ -111,13 +119,16 @@ protected:
 
     virtual ModuleLedDriver* GetModuleLedDriver() = 0;
 
+    void TurnOffLed();
 public:
     virtual void Bootstrap() override;
     virtual void Standby() override;
     virtual void Reset() override;
     virtual void Arm() override;
+    virtual void OnEvent(uint8_t id, void* data) override;
 
     void Update() override;
+    void IdleDisplay() override;
     virtual void ActiveUpdate();
 };
 

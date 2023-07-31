@@ -201,8 +201,6 @@ public:
 		return false;
 	}
 
-	using Event = game::Event<ButtonModule>;
-
 	static bool PulseLoopEvent(Event* event, ButtonModule* mod, FadeEventParam* param) {
 		if (!param->StartTime) {
 			param->StartTime = millis();
@@ -340,9 +338,13 @@ public:
 	}
 
 	const InfoStreamBuilderBase::VariableParam* GetVariableInfo() override {
+		//skip empty fallback enums
+		static const auto labels = InfoStreamBuilderBase::EnumExtra{LABEL_MAX - 1, BUTTON_LABELS + 1};
+		static const auto colors = InfoStreamBuilderBase::EnumExtra{COLOR_MAX - 1, COLOR_NAMES + 1};
+
 		return BOMB_VARIABLES_ARRAY(
-			{"Label", VAR_STR_ENUM},
-			{"Color", VAR_STR_ENUM}
+			{"Label", VAR_STR_ENUM, &labels},
+			{"Color", VAR_STR_ENUM, &colors}
 		);
 	}
 

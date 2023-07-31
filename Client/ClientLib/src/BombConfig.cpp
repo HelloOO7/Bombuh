@@ -129,6 +129,8 @@ InfoStreamBuilderBase::InfoStreamBuilderBase()  {
     m_BufferSize = 0;
     m_MaxOutSize = 0;
     ResizeBuffer(32);
+    memset(m_Enums, 0, sizeof(m_Enums));
+    m_EnumIndex = 0;
 }
 
 InfoStreamBuilderBase::~InfoStreamBuilderBase() {
@@ -192,10 +194,43 @@ void InfoStreamBuilderBase::Build(void** data, size_t* dataSize) {
     *dataSize = m_MaxOutSize;
 }
 
-void InfoStreamBuilderBase::AddVariable(const VariableParam* param) {
+uint8_t InfoStreamBuilderBase::AddEnumDefinition(const char*const * options, uint8_t optionCount) {
+    for (size_t i = 0; i < m_EnumIndex; i++) {
+        if (m_Enums[i] == options) {
+            return i;
+        }
+    }
     *(m_Buffer + m_VarCountAddress) += 1;
+    m_VarsPointer = WriteData(m_VarsPointer, ENUM_DEFINITION);
+    m_VarsPointer = WriteData(m_VarsPointer, optionCount);
+    for (uint8_t i = 0; i < optionCount; i++) {
+        m_VarsPointer = WriteString(m_VarsPointer, options[i]);
+    }
+    m_Enums[m_EnumIndex] = options;
+    return m_EnumIndex++;
+}
+
+void InfoStreamBuilderBase::WriteVarHeader(const VariableParam* param) {
+    *(m_Buffer + m_VarCountAddress) += 1;
+    m_VarsPointer = WriteData(m_VarsPointer, VARIABLE);
     m_VarsPointer = WriteString(m_VarsPointer, param->Name);
     m_VarsPointer = WriteData(m_VarsPointer, param->Type);
+}
+
+void InfoStreamBuilderBase::AddVariable(const VariableParam* param) {
+    switch (param->Type) {
+        case VAR_STR_ENUM:
+        {
+            const EnumExtra* enumEx = static_cast<const EnumExtra*>(param->Extra);
+            uint8_t index = AddEnumDefinition(enumEx->Options, enumEx->OptionCount);
+            WriteVarHeader(param);
+            m_VarsPointer = WriteData(m_VarsPointer, index);
+            break;
+        }
+        default:
+            WriteVarHeader(param);
+            break;
+    }
 }
 
 void BatteryInfoStreamBuilder::SetBatteryInfo(uint8_t batteryCount, uint8_t batterySize) {

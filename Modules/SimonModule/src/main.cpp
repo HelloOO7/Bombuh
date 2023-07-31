@@ -9,10 +9,6 @@
 #include "NeopixelModuleLedDriver.h"
 #include "Adafruit_NeoPixel.h"
 #include "EnumFlagOperators.h"
-#ifdef SFX_ENABLED
-#include "DFRobotDFPlayerMini.h"
-#endif
-#include "SoftwareSerial.h"
 
 enum SimonColor {
 	COLOR_MIN,
@@ -39,23 +35,16 @@ static constexpr int COLOR_LUT_NO_VOWEL[][COLOR_MAX] {
 
 class SimonModule : public DefusableModule, NeopixelLedModuleTrait, public EventfulComponentTrait<SimonModule> {
 private:
-	using Event = game::Event<SimonModule>;
-
 	static constexpr int SEQUENCE_MIN_LENGTH = 4;
 	static constexpr int SEQUENCE_MAX_LENGTH = 6;
 
 	bool m_SerialVowel;
 	
+	bool m_HasInteracted;
 	int m_Sequence[SEQUENCE_MAX_LENGTH];
 	int m_SequenceLength;
 	int m_CurrentSequenceLength;
 	int m_InputPos;
-
-	#ifdef SFX_ENABLED
-	public:
-	SoftwareSerial		m_UART;
-	DFRobotDFPlayerMini m_Player;
-	#endif
 
 	class SimonButton {
 	public:
@@ -82,6 +71,7 @@ private:
 
 		void TurnOn() {
 			digitalWrite(m_LedPin, HIGH);
+			asm volatile("NOP\n");
 		}
 
 		void TurnOff() {
@@ -111,15 +101,8 @@ private:
 
 public:
 	SimonModule() 
-	#ifdef SFX_ENABLED
-	: m_UART(0, 1)
-	#endif
-	 {
+	{
 		SetModuleLedPin(2);
-	}
-
-	void Test() {
-		m_Player.play(2);
 	}
 
 	const char* GetName() override {
@@ -128,10 +111,6 @@ public:
 
 	void Bootstrap() override {
 		DefusableModule::Bootstrap();
-		#ifdef SFX_ENABLED
-		m_UART.begin(9600);
-		m_Player.begin(m_UART, false, true);
-		#endif
 	}
 
 	ModuleLedDriver* GetModuleLedDriver() override {
@@ -148,9 +127,7 @@ public:
 		DefusableModule::Reset();
 		m_Events.CancelAll();
 		TurnOffAllButtons();
-		#ifdef SFX_ENABLED
-		m_Player.stop();
-		#endif
+		noTone(A3);
 	}
 
 	void Standby() override {
@@ -169,6 +146,7 @@ public:
 		DefusableModule::Arm();
 		m_CurrentSequenceLength = 1;
 		m_InputPos = 0;
+		m_HasInteracted = false;
 		StartDemoEvent(2000);
 	}
 
@@ -190,7 +168,11 @@ public:
 			mod->m_FlashOffHandles[b->m_Color].Cancel();
 			b->TurnOn();
 			#ifdef SFX_ENABLED
-			mod->m_Player.play(1 + *data);
+			if (mod->m_HasInteracted) {
+				static int FREQ_TABLE[] {554, 659, 784, 989};
+
+				tone(A3, FREQ_TABLE[b->m_Color], 500);
+			}
 			#endif
 			Event* turnOff = game::CreateWaitEvent<SimonModule>(450);
 			turnOff->Then((new Event(function(Event* event, SimonModule* mod, SimonButton* btn) {
@@ -221,6 +203,7 @@ public:
 		for (int i = 0; i < COLOR_MAX; i++) {
 			SimonButton& btn = m_Buttons[i];
 			if (btn.IsPressed()) {
+				m_HasInteracted = true;
 				m_DemoEvents.Cancel();
 				if (GetRequestedColor() == btn.m_Color) {
 					StartEvent(new Event(FlashButtonEvent, new int(btn.m_Color)));
@@ -285,11 +268,7 @@ public:
 SimonModule mod;
 
 void setup() {
-	#ifdef SFX_ENABLED
-	ComponentMain::GetInstance()->Setup(&mod, true);
-	#else
 	ComponentMain::GetInstance()->Setup(&mod);
-	#endif
 }
 
 void loop() {

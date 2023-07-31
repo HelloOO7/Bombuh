@@ -1,2 +1,2 @@
 # boot.py -- run on boot-up
-#import BombuhServer.main
+import BombuhServer.main

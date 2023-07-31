@@ -147,7 +147,7 @@ static constexpr PROGMEM MazeMap MAZES[] {
 	},
 };
 
-class MazeModule : public DefusableModule, NeopixelLedModuleTrait {
+class MazeModule : public DefusableModule, NeopixelLedModuleTrait, public EventfulComponentTrait<MazeModule> {
 private:
 	static constexpr int PIN_MAZE_STRIP = 3;
 	static constexpr int MAZE_REAL_DIM = 8;
@@ -225,6 +225,7 @@ public:
 		DefusableModule::Reset();
 		m_MazeStrip.clear();
 		m_MazeStrip.show();
+		m_Events.CancelAll();
 	}
 
 	void Standby() override {
@@ -235,19 +236,43 @@ public:
 		return MAZE_REAL_DIM * (y + 1) + ((MAZE_REAL_DIM - MAZE_DIM) >> 1) + x;
 	}
 
+	int GetOuterPixelIndex(int x, int y) {
+		return MAZE_REAL_DIM * y + x;
+	}
+
+	void SetInnerLight(MazePoint& pos, uint32_t color) {
+		m_MazeStrip.setPixelColor(GetPixelIndex(pos.X, pos.Y), color);
+	}
+
+	void SetOuterLight(uint8_t x, uint8_t y, uint32_t color) {
+		m_MazeStrip.setPixelColor(GetOuterPixelIndex(x, y), color);
+	}
+
 	void ChangeHeroPos(MazePoint& newPos) {
 		MazePoint& point = m_HeroPos;
 		uint32_t oldColor = 0x000000;
 		if (point.Equals(m_MazeMap.Id1) || point.Equals(m_MazeMap.Id2)) {
 			oldColor = COLOR_IDENT;
 		}
-		m_MazeStrip.setPixelColor(GetPixelIndex(point.X, point.Y), oldColor);
-		m_MazeStrip.setPixelColor(GetPixelIndex(newPos.X, newPos.Y), COLOR_HERO);
+		SetInnerLight(point, oldColor);
+		SetInnerLight(newPos, COLOR_HERO);
 		m_HeroPos = newPos;
 	}
 
 	void InitDispPos(MazePoint& point, uint32_t color) {
-		m_MazeStrip.setPixelColor(GetPixelIndex(point.X, point.Y), color);
+		SetInnerLight(point, color);
+	}
+
+	void SetEdgeLight(uint32_t color) {
+		for (uint8_t x = 0; x < MAZE_REAL_DIM; x++) {
+			SetOuterLight(x, 0, color);
+			SetOuterLight(x, MAZE_REAL_DIM - 1, color);
+		}
+		for (uint8_t y = 0; y < MAZE_REAL_DIM; y++) {
+			SetOuterLight(0, y, color);
+			SetOuterLight(MAZE_REAL_DIM - 1, y, color);
+		}
+		m_MazeStrip.show();
 	}
 
 	void Arm() override {
@@ -267,7 +292,21 @@ public:
 		m_MazeStrip.show();
 	}
 
+	void MazeStrike() {
+		Strike();
+
+		SetEdgeLight(0xFF0000);
+
+		m_Events
+		.Start(game::CreateWaitEvent<MazeModule>(1000))
+		->Then(function(Event* e, MazeModule* maze) {
+			maze->SetEdgeLight(0x000000);
+			return true;
+		});
+	}
+
 	void ActiveUpdate() override {
+		m_Events.Update();
 		for (int i = 0; i < 4; i++) {
 			DirButton& btn = m_Buttons[i];
 			if (btn.IsPressed()) {
@@ -280,7 +319,7 @@ public:
 					uint8_t cell = *pcell;
 					if (cell & btn.MoveFlag) {
 						if (!(cell & ((btn.MoveFlag) << STATE_SHIFT))) {
-							Strike();
+							MazeStrike();
 							*pcell |= (btn.MoveFlag << STATE_SHIFT);
 							return;
 						}

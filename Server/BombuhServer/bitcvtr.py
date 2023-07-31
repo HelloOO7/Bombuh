@@ -45,14 +45,14 @@ class DataInput:
         return self.read(size).decode()
     
     def read_cstr(self) -> str:
-        buf = self.io.getbuffer() #determine length of string. better than endless concatenation and reallocation
-        start = self.io.tell()
-        end = start
-        while (buf[end] != 0):
-            end += 1
-        dec = self.io.read(end - start - 1).decode()
-        self.io.seek(1, 1) # skip null terminator
-        return dec
+        str = bytes()
+        while True:
+            byte = self.io.read(1)
+            if byte[0] == 0:
+                break
+            else:
+                str += byte
+        return str.decode()
     
 class DataOutput:
     io: BytesIO

@@ -35,8 +35,6 @@ struct ServerCommConfig {
     uint32_t AcceptsEvents;
 };
 
-AVR_SASSERT(sizeof(ConfigVariable) == 9)
-
 struct LabelConfig {
     IDHASH  Text;
     uint8_t IsLit;
@@ -74,7 +72,7 @@ struct ModuleConfig {
 
 struct BombConfig
 {
-    static constexpr int SERIAL_NUMBER_LENGTH = 16;
+    static constexpr int SERIAL_NUMBER_LENGTH = 6;
 
     enum ComponentType : uint8_t {
         MODULE,
@@ -101,8 +99,6 @@ struct BombConfig
         bool   IsLit;
     };
 
-    AVR_SASSERT(sizeof(Label) == 5);
-
     struct Port {
         IDHASH Name;
     };
@@ -117,8 +113,6 @@ struct BombConfig
         ModuleFlag Flags;
         void*  ExtraData;
     };
-
-    AVR_SASSERT(sizeof(Module) == 7);
     
     uint32_t    RandomSeed;
 
@@ -151,13 +145,27 @@ public:
     struct VariableParam {
         const char* Name;
         ConfigVariableType Type;
+        const void* Extra;
+    };
+
+    struct EnumExtra {
+        uint8_t OptionCount;
+        const char*const * Options;
     };
 private:
+    enum DataType : uint8_t {
+        VARIABLE,
+        ENUM_DEFINITION
+    };
+
     char*   m_Buffer;
     size_t  m_BufferSize;
     size_t  m_MaxOutSize;
     size_t  m_VarsPointer;
     size_t  m_VarCountAddress;
+
+    const char*const*   m_Enums[16];
+    size_t              m_EnumIndex;
 
 public:
     InfoStreamBuilderBase();
@@ -184,9 +192,12 @@ protected:
     size_t OpenHeader(BombConfig::ComponentType type);
     void FinalizeHeader(size_t addr);
 
+    void WriteVarHeader(const VariableParam* param);
+
 public:
     void Build(void** data, size_t* dataSize);
 
+    uint8_t AddEnumDefinition(const char*const * options, uint8_t optionCount);
     void AddVariable(const VariableParam* param);
 };
 
@@ -218,6 +229,5 @@ public:
         return SetInfo(moduleName, flags, nullptr, 0);
     }
 };
-
 
 #endif
