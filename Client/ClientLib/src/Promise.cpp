@@ -76,7 +76,6 @@ void Promise::Resolve(void* resp) {
 }
 
 void Promise::Reject() {
-    delete this;
     if (m_Next) {
         PromiseStub* n = m_Next;
         while (n) {
@@ -85,6 +84,7 @@ void Promise::Reject() {
             n = n2;
         }
     }
+    delete this;
 }
 
 EmptyPromise::EmptyPromise(void* context) : Promise(context) {

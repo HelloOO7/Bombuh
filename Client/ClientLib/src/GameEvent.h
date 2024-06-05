@@ -26,7 +26,7 @@ namespace game {
     template<typename C>
     class Event {
         friend class EventManager<C>;
-        friend class EventChain<C>;
+        friend struct EventChain<C>;
     private:
         EventFunc m_Func;
         void* m_Data;
@@ -128,7 +128,7 @@ namespace game {
     template<typename C>
     struct EventChainHandle {
         friend class EventManager<C>;
-        friend class EventChain<C>;
+        friend struct EventChain<C>;
     private:
         EventManager<C>* m_Mgr;
         EventChain<C>* m_Chain;

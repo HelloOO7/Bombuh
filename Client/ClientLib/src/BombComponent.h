@@ -9,8 +9,10 @@ class BombComponent;
 #include "GameEvent.h"
 #include "ModuleLedDriver.h"
 
+extern const InfoStreamBuilderBase::VariableParam __BOMB_NO_VARIABLES[];
+
 #define BOMB_VARIABLES_ARRAY(...) (const InfoStreamBuilderBase::VariableParam[]) {__VA_ARGS__, {nullptr, VAR_NULLTYPE}}
-#define BOMB_NO_VARIABLES (const InfoStreamBuilderBase::VariableParam[]){{nullptr, VAR_NULLTYPE}}
+#define BOMB_NO_VARIABLES __BOMB_NO_VARIABLES
 
 class BombComponent {
     friend class BombInterface;

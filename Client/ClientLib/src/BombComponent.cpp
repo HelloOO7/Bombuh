@@ -3,6 +3,10 @@
 #include "Common.h"
 #include "BombComponent.h"
 
+const InfoStreamBuilderBase::VariableParam __BOMB_NO_VARIABLES[]{
+    {nullptr, VAR_NULLTYPE}
+};
+
 BombComponent::BombComponent() {
 
 }
