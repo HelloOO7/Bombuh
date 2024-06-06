@@ -1,3 +1,7 @@
+#ifndef PROMISE_DEBUG
+#undef DEBUG
+#endif
+
 #include "Promise.h"
 
 PromiseStub::~PromiseStub() {

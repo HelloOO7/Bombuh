@@ -5,6 +5,8 @@
 #include "BombComponent.h"
 #include "Common.h"
 #include "BombInterface.h"
+#include <string.h>
+#include <alloca.h>
 
 BombState::BombState() : Clock{0}, Timescale{1.0f}, ClockSyncTime{0}, Strikes{0} {
     
@@ -142,6 +144,16 @@ void BombInterface::Strike() {
 
 void BombInterface::DefuseMe() {
     m_Client->QueueRequest("DefuseComponent");
+}
+
+void BombInterface::SendServerMessage(bprotocol::ServerMessageType type, const char* text, bool progMem) {
+    size_t len = progMem ? strlen_P(text) : strlen(text);
+    size_t reqSize = 3 + len;
+    bprotocol::ServerMessageRequest* req = (bprotocol::ServerMessageRequest*) alloca(reqSize);
+    req->m_Type = type;
+    req->m_Length = len;
+    progMem ? memcpy_P(req->m_Text, text, len) : memcpy(req->m_Text, text, len);
+    m_Client->QueueRequest("OutputDebugMessage", req, reqSize);
 }
 
 void BombInterface::UpdateClockValue(bombclock_t clock) {

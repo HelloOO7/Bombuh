@@ -235,6 +235,8 @@ class Server:
 
         for device in self.devices:
             response = device.send_command(Server.CMD_POLL)
+            if (response is None):
+                continue # read error
             file = DataInput(BytesIO(response))
             count = file.read_u8()
             for i in range(count):

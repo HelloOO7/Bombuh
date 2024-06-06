@@ -71,7 +71,6 @@ private:
 
 		void TurnOn() {
 			digitalWrite(m_LedPin, HIGH);
-			asm volatile("NOP\n");
 		}
 
 		void TurnOff() {
@@ -152,7 +151,9 @@ public:
 
 	int GetRequestedColor() {
 		const int(*lut)[COLOR_MAX] = m_SerialVowel ? COLOR_LUT_VOWEL : COLOR_LUT_NO_VOWEL;
-		return lut[m_Bomb->GetStrikes()][m_Sequence[m_InputPos]];
+		BOMB_ASSERT(m_InputPos < m_SequenceLength)
+		BOMB_ASSERT(m_Sequence[m_InputPos] < COLOR_MAX)
+		return lut[min(m_Bomb->GetStrikes(), 2)][m_Sequence[m_InputPos]];
 	}
 
 	game::EventChainHandle<SimonModule> m_FlashOffHandles[COLOR_MAX];
@@ -165,6 +166,7 @@ public:
 			}
 		}
 		if (b) {
+			BOMB_ASSERT(b->m_Color < COLOR_MAX)
 			mod->m_FlashOffHandles[b->m_Color].Cancel();
 			b->TurnOn();
 			#ifdef SFX_ENABLED

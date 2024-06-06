@@ -1,3 +1,7 @@
+#ifndef BOMBCLIENT_DEBUG
+#undef DEBUG
+#endif
+
 #include "Arduino.h"
 #include <stdint.h>
 #include "Wire.h"

@@ -192,8 +192,8 @@ public:
 				PRINTF_P("Wire %d color %d\n", m_PresentWires, color);
 				m_WireLut[m_PresentWires] = i;
 				m_WireColors[m_PresentWires++] = color;
+				m_WireCountsByColor[color]++;
 			}
-			m_WireCountsByColor[m_WireColors[i]]++;
 		}
 	}
 

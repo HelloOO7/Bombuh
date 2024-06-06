@@ -153,12 +153,17 @@ private:
         size_t GetAvailableRequestId();
 
         template <typename Resp, template <typename> typename Req, typename RespHnd, typename P>
-        void QueueRequest(const char* handlerName, Req<Resp>* params, RespHnd handleResponse, P* handleRespParam = nullptr) {
+        void QueueRequest(const char* handlerName, Req<Resp>* params, size_t paramsSize, RespHnd handleResponse, P* handleRespParam = nullptr) {
             size_t allocIndex = GetAvailableRequestId();
             if (allocIndex != REQUEST_POOL_FULL) {
                 void(*func)(Resp*, P*) = static_cast<void(*)(Resp*, P*)>(handleResponse);
-                InsertRequest(allocIndex, handlerName, static_cast<void*>(params), sizeof(Req<Resp>), reinterpret_cast<void(*)(void*, void*)>(func), static_cast<void*>(handleRespParam));
+                InsertRequest(allocIndex, handlerName, static_cast<void*>(params), paramsSize, reinterpret_cast<void(*)(void*, void*)>(func), static_cast<void*>(handleRespParam));
             }
+        }
+
+        template <typename Resp, template <typename> typename Req, typename RespHnd, typename P>
+        void QueueRequest(const char* handlerName, Req<Resp>* params, RespHnd handleResponse, P* handleRespParam = nullptr) {
+            QueueRequest(handlerName, params, sizeof(Req<Resp>), handleResponse, handleRespParam);
         }
 
         template <typename Resp, typename Req, typename RespHnd>
@@ -171,11 +176,16 @@ private:
         }
 
         template<typename Req>
-        void QueueRequest(const char* handlerName, Req* params) {
+        void QueueRequest(const char* handlerName, Req* params, size_t paramsSize) {
             size_t allocIndex = GetAvailableRequestId();
             if (allocIndex != REQUEST_POOL_FULL) {
-                InsertRequest(allocIndex, handlerName, static_cast<void*>(params), sizeof(Req), nullptr, nullptr);
+                InsertRequest(allocIndex, handlerName, static_cast<void*>(params), paramsSize, nullptr, nullptr);
             }
+        }
+
+        template<typename Req>
+        void QueueRequest(const char* handlerName, Req* params) {
+            QueueRequest(handlerName, params, sizeof(Req));
         }
 
         void QueueRequest(const char* handlerName);

@@ -45,6 +45,7 @@ void ComponentMain::Setup(BombComponent* module, bool disableSerial) {
 }
 
 void ComponentMain::Loop() {
+    cli();
     if (m_RequestedState != StateRequest::NONE && m_BombCl.IsAllSyncDone()) {
         PROCESS_STATE_CHANGE:
         switch (m_RequestedState) {
@@ -74,6 +75,7 @@ void ComponentMain::Loop() {
     else {
         m_Component->IdleDisplay();
     }
+    sei();
 }
 
 void ComponentMain::DispatchEvent(uint8_t id, void* data) {
@@ -103,4 +105,21 @@ void ComponentMain::DispatchEvent(uint8_t id, void* data) {
 
 void ComponentMain::DoDispatchEvent(uint8_t id, void* data, ComponentMain* mm) {
     mm->DispatchEvent(id, data);
+}
+
+void ComponentMain::GlobalAssertFailed(const char* message) {
+    ComponentMain::GetInstance()->AssertFailed(message);
+}
+
+void ComponentMain::AssertFailed(const char* message) {
+    puts_P(message);
+    m_BombInterface->SendServerMessage(bprotocol::SRVMSG_ASSERT, message, true);
+    AssertFailedPanicLoop();
+}
+
+void ComponentMain::AssertFailedPanicLoop() {
+    sei();
+    while (true) {
+        ;
+    }
 }

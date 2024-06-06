@@ -130,25 +130,27 @@ namespace game {
         friend class EventManager<C>;
         friend struct EventChain<C>;
     private:
-        EventManager<C>* m_Mgr;
-        EventChain<C>* m_Chain;
-        bool           m_Active;
+        EventManager<C>* m_Mgr{nullptr};
+        EventChain<C>* m_Chain{nullptr};
 
     public:
-        EventChainHandle() : m_Active{false} {
+        EventChainHandle() {
             
+        }
+
+        void Reset() {
+            SetChain(nullptr, nullptr);
         }
 
     private:
         void SetChain(EventManager<C>* mgr, EventChain<C>* chain) {
             m_Mgr = mgr;
             m_Chain = chain;
-            m_Active = true;
         }
 
     public:
         void Cancel() {
-            if (m_Active) {
+            if (m_Mgr) {
                 m_Mgr->Cancel(this);
             }
         }
@@ -205,8 +207,10 @@ namespace game {
 
     public:
         void Cancel(EventChainHandle<C>* handle) {
-            handle->m_Chain->Cancel();
-            UnlinkChain(handle->m_Chain);
+            if (handle->m_Chain && handle->m_Mgr == this) {
+                handle->m_Chain->Cancel();
+                UnlinkChain(handle->m_Chain); //EventChain dtor will call handle->Reset
+            }
         }
 
         void CancelAll() {
@@ -265,7 +269,7 @@ namespace game {
         Event<C>* m_CurEvent;
         EventChain* m_Prev{nullptr};
         EventChain* m_Next{nullptr};
-        EventChainHandle<C>* m_Handle;
+        EventChainHandle<C>* m_Handle{nullptr};
 
         EventChain(Event<C>* event) {
             m_CurEvent = event;
@@ -273,7 +277,7 @@ namespace game {
 
         ~EventChain() {
             if (m_Handle) {
-                m_Handle->m_Active = false;
+                m_Handle->Reset();
             }
         }
 

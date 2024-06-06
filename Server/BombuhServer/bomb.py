@@ -476,6 +476,16 @@ class Bomb:
                 component = bomb.dev_to_component_dict.get(request['deviceid'])
                 bomb.defuse_component(component)
 
+        class OutputDebugMessageHandler(DeviceSpecificHandlerBase):
+            def decode(self, device: DeviceHandle, io: DataInput):
+                type = ["INFO", "ASSERT"][io.read_u8()]
+                text_size = io.read_u16()
+                text = io.read(text_size).decode()
+                return {"type": type, "text": text}
+
+            def execute(self, request) -> None:
+                print(request["type"], "|", request["text"])
+
         srv.regist_handler("GetStrikes", GetStrikesHandler())
         srv.regist_handler("GetClock", GetClockHandler())
         srv.regist_handler("AckReadyToArm", AckReadyToArmHandler())
@@ -483,6 +493,7 @@ class Bomb:
         srv.regist_handler("GetComponentConfigByBusAddress", GetComponentConfigHandler())
         srv.regist_handler("AddStrike", AddStrikeHandler())
         srv.regist_handler("DefuseComponent", DefuseComponentHandler())
+        srv.regist_handler("OutputDebugMessage", OutputDebugMessageHandler())
 
     @staticmethod
     def pack_buffer(buf: bytes):

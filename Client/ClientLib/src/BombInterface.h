@@ -75,6 +75,17 @@ namespace bprotocol {
     template<typename T>
     struct SimpleRequest : BombClient::TRequest<T> {
     };
+
+    enum ServerMessageType : uint8_t {
+        SRVMSG_INFO,
+        SRVMSG_ASSERT
+    };
+
+    struct ServerMessageRequest : BombClient::TRequest<BombClient::TResponse> {
+        ServerMessageType m_Type;
+        uint16_t m_Length;
+        char m_Text[1];
+    };
 }
 
 struct BombState {
@@ -131,6 +142,8 @@ public:
 
     void Strike();
     void DefuseMe();
+
+    void SendServerMessage(bprotocol::ServerMessageType type, const char* text, bool progMem);
 
     void UpdateClockValue(bombclock_t clock);
 

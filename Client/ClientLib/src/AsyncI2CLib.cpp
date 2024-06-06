@@ -1,3 +1,7 @@
+#ifndef I2C_DEBUG
+#undef DEBUG
+#endif
+
 #include <stddef.h>
 #include "lambda.h"
 #include <alloca.h>
