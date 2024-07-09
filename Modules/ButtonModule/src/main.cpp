@@ -231,9 +231,9 @@ public:
 
 	void StartStripAnimation(uint32_t rgb) {
 		Event* animation = new Event(AnimateEvent, CreateStripAnimation(0x000000, rgb, 500));
-		animation->Then(
+		/*animation->Then(
 			new Event(PulseLoopEvent, CreateStripAnimation(rgb, DarkenColor(rgb), 1000))
-		);
+		);*/
 		m_Events.Start(animation);
 	}
 
@@ -299,6 +299,7 @@ public:
 	}
 
 	void Display() override {
+		DefusableModule::Display();
 		m_Events.Update();
 	}
 

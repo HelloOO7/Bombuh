@@ -57,13 +57,14 @@ class ClientSocket:
             print("Invalid packet start: ", header)
             return None
         size = bitcvtr.to_u16(header[1:])
+        remaining = size
         ret = bytes()
-        while size > 0:
-            read_size = min(size, 32)
+        while remaining > 0:
+            read_size = min(remaining, 32)
             ret += self.read(read_size, True)
-            size -= read_size
+            remaining -= read_size
 
-        print("Read packet content", ret)
+        print("Read packet, size", size, "content", ret)
         self.release_mutex()
         return ret
     

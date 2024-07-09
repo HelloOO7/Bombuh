@@ -360,7 +360,7 @@ def randbool():
     return random.randint(0, 1) == 1
 
 class Bomb:
-    DECOUPLE_SERIAL_AND_RNG = True
+    DECOUPLE_SERIAL_AND_RNG = False
     STRIKE_TO_TIMER_SCALE = [1.0, 1.25, 1.5, 3.0, 6.0]
     SERIAL_NUMBER_LENGTH = 6
     SERIAL_NUMBER_CHARS = [ # Based on the logic in KTANE
@@ -588,7 +588,7 @@ class Bomb:
         return flags
 
     def set_module_random_seed(self):
-        self.random_seed = Server.str_hash(self.serial_number) if Bomb.DECOUPLE_SERIAL_AND_RNG else random.randint()
+        self.random_seed = Server.str_hash(self.serial_number) if not Bomb.DECOUPLE_SERIAL_AND_RNG else random.randint(1, 999999)
 
     def set_serial(self, serial: str) -> None:
         self.serial_number = serial
@@ -629,6 +629,12 @@ class Bomb:
         self.device_mutex.lock()
         self.srv.add_socket(socket, True)
         self.srv.shake_hands_with(socket, self.create_handshake_request(), self.handshake_callback)
+        
+        if socket.id() in self.dev_to_component_dict:
+            component = self.dev_to_component_dict[socket.id()]
+            if component.accepts_event(BombEvent.RESET):
+                self.send_event(component, BombEvent.RESET)
+
         self.device_mutex.release()
 
     def remove_virtual_device(self, socket: ClientSocket):
@@ -869,6 +875,10 @@ class Bomb:
 
         for svc in self.services.values():
             svc.update()
+
+    def send_event(self, comp: ComponentHandleBase, eventId: int, params = None):
+        if (comp.accepts_event(eventId)):
+            self.srv.send_event(comp.comm_device, self.srv.make_event_packet(eventId, params))
 
     def dispatchEvent(self, eventId: int, params = None):
         packet = self.srv.make_event_packet(eventId, params)

@@ -63,6 +63,12 @@ class AudioServerAPI:
     def play_victory(self) -> None:
         self.make_request_async("/play-victory")
 
+    def play_explosion(self) -> None:
+        self.make_request_async("/play-explosion")
+
+    def play_strike(self) -> None:
+        self.make_request_async("/play-strike")
+
     def play_setup(self) -> None:
         self.make_request_async("/play-setup")
 
@@ -80,19 +86,24 @@ class BGMModule(VirtualModule):
     def __init__(self, bomb: Bomb, api: AudioServerAPI) -> None:
         self.api = api
         self.victory_time = None
-        super().__init__(bomb, "mod_BGM", BombEvent.DEFUSAL, BombEvent.EXPLOSION, BombEvent.TIMER_SYNC, BombEvent.RESET, BombEvent.ARM)
+        super().__init__(bomb, "mod_BGM", 
+                         BombEvent.DEFUSAL, BombEvent.EXPLOSION, BombEvent.TIMER_SYNC, 
+                         BombEvent.RESET, BombEvent.ARM, BombEvent.STRIKE)
 
     def handle_event(self, id: int, data):
-        if id == BombEvent.EXPLOSION or id == BombEvent.RESET:
-            print("Stop music.")
-            self.api.stop()
+        if id == BombEvent.RESET:
+            self.api.play_setup()
+        if id == BombEvent.EXPLOSION:
+            self.api.play_explosion()
         elif id == BombEvent.DEFUSAL:
-            self.api.stop()
-            self.victory_time = time.ticks_add(time.ticks_ms(), 1000)
+            #self.victory_time = time.ticks_add(time.ticks_ms(), 1000)
+            self.api.play_victory()
         elif id == BombEvent.ARM:
             self.api.start_gameplay(int(self.bomb.timer_limit))
         elif id == BombEvent.TIMER_SYNC:
             self.api.update_gameplay(self.bomb.timer_int(), self.bomb.timer_scale)
+        elif id == BombEvent.STRIKE:
+            self.api.play_strike()
 
     def update(self):
         ts = time.ticks_ms()

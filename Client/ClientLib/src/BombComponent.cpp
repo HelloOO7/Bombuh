@@ -202,11 +202,14 @@ void DefusableModule::Arm() {
 }
 
 void DefusableModule::Update() {
-    m_LightEventQueue->Execute();
-    m_LightEvents->Update();
     if (!m_IsDefused) {
         ActiveUpdate();
     }
+}
+
+void DefusableModule::Display() {
+    m_LightEventQueue->Execute();
+    m_LightEvents->Update();
 }
 
 void DefusableModule::IdleDisplay() {

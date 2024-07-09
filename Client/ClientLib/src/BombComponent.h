@@ -130,6 +130,7 @@ public:
     virtual void OnEvent(uint8_t id, void* data) override;
 
     void Update() override;
+    void Display() override;
     void IdleDisplay() override;
     virtual void ActiveUpdate();
 };
