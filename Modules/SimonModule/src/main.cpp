@@ -234,6 +234,7 @@ public:
 	}
 
 	void Display() override {
+		DefusableModule::Display();
 		m_Events.Update();
 	}
 

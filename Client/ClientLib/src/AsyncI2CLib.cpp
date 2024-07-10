@@ -132,7 +132,7 @@ namespace comm {
             }
             Serial.println("}");
             #endif
-            if (!e->m_RemainingSize) {
+            if (e->m_RemainingSize == 0) {
                 m_Head = e->m_Next;
                 DEBUG_PRINTF_P("Resolving write promise %p...\n", e->m_Promise)
                 e->m_Promise->Resolve(e->m_WriteBufferPos);

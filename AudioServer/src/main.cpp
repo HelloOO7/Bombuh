@@ -40,6 +40,9 @@ struct SoundList {
 };
 
 class MusicController {
+protected:
+	float m_Gain{1.0f};
+
 public:
 	virtual ~MusicController() {
 
@@ -47,6 +50,13 @@ public:
 
 	virtual void Start(AudioOutputMixer* output) = 0;
 	virtual bool Loop() = 0;
+
+	virtual void OnSetGain(float gain);
+
+	inline void SetGain(float gain) {
+		m_Gain = gain;
+		OnSetGain(gain);
+	}
 };
 
 class AudioFileSourceSDPersistent : public AudioFileSourceSD {
@@ -105,6 +115,7 @@ public:
 	void Start(AudioOutputMixer* output) override {
 		if (!m_Out) {
 			m_Out = output->NewInput();
+			m_Out->SetGain(m_Gain);
 		}
 		m_Generator.begin(&m_Source, m_Out);
 	}
@@ -118,6 +129,12 @@ public:
 			return retval;
 		}
 		return false;
+	}
+
+	void OnSetGain(float gain) override {
+		if (m_Out) {
+			m_Out->SetGain(gain);
+		}
 	}
 };
 
@@ -172,11 +189,18 @@ public:
 
 	void Start(AudioOutputMixer* output) override {
 		m_Out = output->NewInput();
+		m_Out->SetGain(m_Gain);
 		m_Generator.begin(m_Out);
 	}
 
 	bool Loop() override {
 		return m_Generator.loop();
+	}
+
+	void OnSetGain(float gain) override {
+		if (m_Out) {
+			m_Out->SetGain(gain);
+		}
 	}
 };
 
@@ -243,11 +267,18 @@ public:
 
 	void Start(AudioOutputMixer* output) override {
 		m_Out = output->NewInput();
+		m_Out->SetGain(m_Gain);
 		m_Generator.begin(m_Out);
 	}
 
 	bool Loop() override {
 		return m_Generator.loop();
+	}
+
+	void OnSetGain(float gain) override {
+		if (m_Out) {
+			m_Out->SetGain(gain);
+		}
 	}
 };
 
@@ -304,6 +335,10 @@ public:
 
 	void Start(AudioOutputMixer* out) override {
 		m_Controller->Start(out);
+	}
+
+	void SetGain(float gain) {
+		m_Controller->SetGain(gain);
 	}
 };
 
@@ -563,7 +598,10 @@ void PlaySetupMusic() {
 		{"/Ambient/SetupRoomE_Intro.wav", "/Ambient/SetupRoomE_Loop.wav"}
 	};
 	const char* const* info = TRACKS[random(sizeof(TRACKS) / sizeof(TRACKS[0]))];
-	StartPlayback(g_LastSetupMusicPlayer = new SimpleMusicPlayer(info[0], info[1]));
+	SimpleMusicPlayer* setupMusic = new SimpleMusicPlayer(info[0], info[1]);
+	setupMusic->SetGain(0.4f);
+	StartPlayback(setupMusic);
+	g_LastSetupMusicPlayer = setupMusic; //musi to byt tady protoze StartPlayback zavola StopPlayback
 }
 
 void PlayExplosionSound() {
@@ -606,7 +644,13 @@ void EnsureWireless() {
 		WiFi.reconnect();
 	}
 	while (WiFi.status() != WL_CONNECTED) {
-		delay(100);
+		if (g_Player) {
+			g_Player->Update();
+			g_Player->Loop();
+			g_Mixer->m_LoopRequested = true;
+			g_Mixer->loop();
+		}
+		delay(1);
 	}
 	printf("Connected to WiFi! IP: %s\n", WiFi.localIP().toString().c_str());
 	Pair();
@@ -695,9 +739,7 @@ void setup() {
   	Serial.println("-- Bombuh AudioServer --");
 	delay(1000);
 	InitSDFS();
-	WiFi.mode(WIFI_STA);
-	EnsureWireless();
-	InitNetworkServer();
+	
 	g_I2SSink = new AudioOutputI2S();
 	g_I2SSink->SetPinout(19, 18, 6);
 
@@ -705,6 +747,11 @@ void setup() {
 	g_Mixer = new AudioOutputMixerFix(2048, g_I2SSink);
 	LoadSoundListFromFolder(&g_ExplosionSoundList, "/Explosions");
 	g_StrikePlayer = new SingleMusicController("/ME/strike.wav");
+
+	WiFi.mode(WIFI_STA);
+	InitNetworkServer();
+
+	EnsureWireless();
 }
 
 bool g_DoDelay = false;
@@ -712,7 +759,10 @@ bool g_DoDelay = false;
 void loop() {
 	g_PlayMutex.lock();
 	if (WiFi.status() != WL_CONNECTED) {
-		StopPlayback();
+		if (g_Player != g_LastSetupMusicPlayer) {
+			printf("Stop music - connection lost\n");
+			StopPlayback();
+		}
 		EnsureWireless();
 	}
 

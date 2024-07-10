@@ -7,6 +7,7 @@
 #include <new>
 #include "Common.h"
 #include "AsyncI2CLib.h"
+#include "RingBuffer.h"
 
 #define function []
 
@@ -86,6 +87,8 @@ private:
     static constexpr size_t REQUEST_POOL_LIMIT = 8;
     static constexpr size_t REQUEST_POOL_FULL = -1;
 
+    static constexpr size_t COMMAND_QUEUE_LIMIT = 8;
+
     comm::AsyncI2C   m_I2C;
 
     ServerRequest    m_RequestPool[REQUEST_POOL_LIMIT];
@@ -93,7 +96,8 @@ private:
 
     bool             m_DiscoveryRequested;
 
-    NetCommandPacket*m_CurrentCommand;
+    RingBuffer<NetCommandPacket*, COMMAND_QUEUE_LIMIT> m_CommandQueue;
+    NetCommandPacket* m_CurrentCommand;
 
     void(*m_CommandHandlers[NET_COMMAND_MAX])(BombClient* client);
 
@@ -131,6 +135,8 @@ private:
             m_HandshakeHandler = (HandshakeHandler) func;
             m_HandshakeHandlerParam = static_cast<void*>(param);
         }
+
+        void ProcessCommands();
 
         void DispatchEvent();
 

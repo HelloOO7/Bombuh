@@ -109,13 +109,12 @@ void BombClient::Attach(int address) {
             }
             else {
                 b->ReadPacket()->Then<BombClient, void>(function(BombClient* cl, void* packetContents) {
-                    cl->m_CurrentCommand = static_cast<NetCommandPacket*>(packetContents);
-                    DEBUG_PRINTF_P("Packet type %d\n", cl->m_CurrentCommand->CommandID);
+                    NetCommandPacket* command = static_cast<NetCommandPacket*>(packetContents);
+                    DEBUG_PRINTF_P("Packet type %d\n", command->CommandID);
 
-                    if (cl->m_CurrentCommand->CommandID < NetCommand::NET_COMMAND_MAX && cl->m_CommandHandlers[cl->m_CurrentCommand->CommandID]) {
-                        cl->m_CommandHandlers[cl->m_CurrentCommand->CommandID](cl);
+                    if (!cl->m_CommandQueue.Push(command)) {
+                        PRINTLN_P("Network command queue full!!");
                     }
-                    cl->m_CurrentCommand->Close();
                 });
                 while (bytes) {
                     if (!b->m_I2C.IsReceiving()) {
@@ -129,6 +128,19 @@ void BombClient::Attach(int address) {
     });
 
     Wire.begin(address);
+}
+
+void BombClient::ProcessCommands() {
+    while (m_CommandQueue.HasNext()) {
+        m_CurrentCommand = m_CommandQueue.Pop();
+
+        if (m_CurrentCommand->CommandID < NetCommand::NET_COMMAND_MAX && m_CommandHandlers[m_CurrentCommand->CommandID]) {
+            cli();
+            m_CommandHandlers[m_CurrentCommand->CommandID](this);
+            sei();
+        }
+        m_CurrentCommand->Close();
+    }
 }
 
 void BombClient::DispatchEvent() {
